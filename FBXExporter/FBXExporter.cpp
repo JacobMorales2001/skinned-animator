@@ -3,7 +3,6 @@
 #include <d3dcompiler.h>
 #include <directxmath.h>
 
-
 #include <fbxsdk.h>
 #include <vector>
 #include <iostream>
@@ -11,26 +10,52 @@
 
 namespace MFBXExporter
 {
+	constexpr int maxPathLength = 260;
 	using namespace DirectX;
 
 	struct MoralesVertex
 	{
-		XMFLOAT3 Pos;
-		XMFLOAT3 Normal;
+		XMFLOAT4 Pos;
+		XMFLOAT4 Normal;
+		XMFLOAT4 Color;
 		XMFLOAT2 Tex;
+	};
+
+	struct MoralesMaterial
+	{
+		enum ComponentType {EMISSIVE = 0, DIFFUSE, SPECULAR, SHININESS, COUNT};
+
+		struct Component
+		{
+			float value[3] = { 0.0f, 0.0f, 0.0f };
+			float factor = 0.0f;
+			int64_t input = -1;
+		};
+
+		Component& operator[](int i) { return components[i]; }
+
+		const Component& operator[](int i) const { return components[i]; }
+
+	private:
+		Component components[COUNT];
 	};
 
 	struct MoralesMesh
 	{
 		std::vector<MoralesVertex> vertexList;
 		std::vector<int> indicesList;
+		std::vector<MoralesMaterial> materialList;
+		std::vector<std::string> materialPaths;
 	};
 
 	void ProcessFbxMesh(FbxNode* Node);
+	void ProcessFbxMaterials(FbxScene* Scene);
+	void ProcessFbxAnimation(FbxScene* Scene);
 	void SaveMesh(const char* meshFileName, MoralesMesh& mesh);
 	std::string ReplaceFBXExtension(std::string fileName);
+	bool AreEqual(float a, float b);
 
-	MoralesMesh simpleMesh;
+	MoralesMesh moralesMesh;
 	int numIndices = 0;
 
 	int main(int argc, char** argv)
@@ -83,11 +108,15 @@ namespace MFBXExporter
 		// The file is imported, so get rid of the importer.
 		lImporter->Destroy();
 
+		// Process the mesh and the materials
 		ProcessFbxMesh(lScene->GetRootNode());
+
+		ProcessFbxMaterials(lScene);
+
 
 		std::string newFileLocation = ReplaceFBXExtension(SourceFileLocation);
 
-		SaveMesh(newFileLocation.c_str(), simpleMesh);
+		SaveMesh(newFileLocation.c_str(), moralesMesh);
 
 		// Destroy the SDK manager and all the other objects it was handling.
 		lSdkManager->Destroy();
@@ -118,20 +147,25 @@ namespace MFBXExporter
 			{
 				std::cout << "\nMesh:" << childNode->GetName();
 
+
 				// Get index count from mesh
 				int numVertices = mesh->GetControlPointsCount();
 				std::cout << "\nVertex Count:" << numVertices;
 
 				// Resize the vertex vector to size of this mesh
-				simpleMesh.vertexList.resize(numVertices);
+				moralesMesh.vertexList.resize(numVertices);
 
 				//================= Process Vertices ===============
 				for (int j = 0; j < numVertices; j++)
 				{
 					FbxVector4 vert = mesh->GetControlPointAt(j);
-					simpleMesh.vertexList[j].Pos.x = static_cast<float>(vert.mData[0]);
-					simpleMesh.vertexList[j].Pos.y = static_cast<float>(vert.mData[1]);
-					simpleMesh.vertexList[j].Pos.z = static_cast<float>(vert.mData[2]);
+					moralesMesh.vertexList[j].Pos.x = static_cast<float>(vert.mData[0]);
+					moralesMesh.vertexList[j].Pos.y = static_cast<float>(vert.mData[1]);
+					moralesMesh.vertexList[j].Pos.z = static_cast<float>(vert.mData[2]);
+					moralesMesh.vertexList[j].Pos.w = static_cast<float>(vert.mData[3]);
+
+
+
 					// Generate random normal for first attempt at getting to render
 					//simpleMesh.vertexList[j].Normal = RAND_NORMAL;
 				}
@@ -143,8 +177,8 @@ namespace MFBXExporter
 				int* indices = mesh->GetPolygonVertices();
 
 				// Fill indiceList
-				simpleMesh.indicesList.resize(numIndices);
-				memcpy(simpleMesh.indicesList.data(), indices, numIndices * sizeof(int));
+				moralesMesh.indicesList.resize(numIndices);
+				memcpy(moralesMesh.indicesList.data(), indices, numIndices * sizeof(int));
 
 				// Get the Normals array from the mesh
 				FbxArray<FbxVector4> normalsVec;
@@ -168,7 +202,6 @@ namespace MFBXExporter
 					//get lUVSetIndex-th uv set
 					const char* lUVSetName = lUVSetNameList.GetStringAt(lUVSetIndex);
 					const FbxGeometryElementUV* lUVElement = mesh->GetElementUV(lUVSetName);
-
 					if (!lUVElement)
 						continue;
 
@@ -201,6 +234,11 @@ namespace MFBXExporter
 								int lUVIndex = lUseIndex ? lUVElement->GetIndexArray().GetAt(lPolyVertIndex) : lPolyVertIndex;
 
 								lUVValue = lUVElement->GetDirectArray().GetAt(lUVIndex);
+
+								vertexListExpanded[CurrentUV].Tex.x = lUVValue.mData[0];
+								vertexListExpanded[CurrentUV].Tex.y = lUVValue.mData[1];
+
+								CurrentUV++;
 
 								//User TODO:
 								//Print out the value of UV(lUVValue) or log it to a file
@@ -241,13 +279,22 @@ namespace MFBXExporter
 					}
 				}
 
+				// iterate through all color sets
+				// Similar to iterating uv sets, just with FbxGeometryElementVertexColor
+
+				//for (size_t i = 0; i < length; i++)
+				//{
+
+				//}
+				
 				// align (expand) vertex array and set the normals
 				for (int j = 0; j < numIndices; j++)
 				{
-					vertexListExpanded[j].Pos = simpleMesh.vertexList[simpleMesh.indicesList[j]].Pos;
+					vertexListExpanded[j].Pos = moralesMesh.vertexList[moralesMesh.indicesList[j]].Pos;
 					vertexListExpanded[j].Normal.x = normalsVec.GetAt(j)[0];
 					vertexListExpanded[j].Normal.y = normalsVec.GetAt(j)[1];
 					vertexListExpanded[j].Normal.z = normalsVec.GetAt(j)[2];
+					vertexListExpanded[j].Normal.w = normalsVec.GetAt(j)[3];
 				}
 
 				// make new indices to match the new vertex(2) array
@@ -259,7 +306,7 @@ namespace MFBXExporter
 					//std::cout << "\n" << indicesList[j];
 				}
 
-				if (vertexListExpanded.size() > simpleMesh.vertexList.size())
+				if (vertexListExpanded.size() > moralesMesh.vertexList.size())
 				{
 					// compactify
 					int expandedSize = vertexListExpanded.size();
@@ -273,17 +320,21 @@ namespace MFBXExporter
 						int foundAt = 0;
 						for (int k = 0; k < compactedVertexList.size(); k++)
 						{
-							if
-								(
-									(vertexListExpanded[j].Normal.x == compactedVertexList[k].Normal.x) &&
-									(vertexListExpanded[j].Normal.y == compactedVertexList[k].Normal.y) &&
-									(vertexListExpanded[j].Normal.z == compactedVertexList[k].Normal.z) &&
-									(vertexListExpanded[j].Pos.x == compactedVertexList[k].Pos.x) &&
-									(vertexListExpanded[j].Pos.y == compactedVertexList[k].Pos.y) &&
-									(vertexListExpanded[j].Pos.z == compactedVertexList[k].Pos.z) &&
-									(vertexListExpanded[j].Tex.x == compactedVertexList[k].Tex.x) &&
-									(vertexListExpanded[j].Tex.y == compactedVertexList[k].Tex.y)
-									)
+							// if the two verts are pretty close to being equal
+							if ((AreEqual(vertexListExpanded[j].Normal.x, compactedVertexList[k].Normal.x)) &&
+								(AreEqual(vertexListExpanded[j].Normal.y, compactedVertexList[k].Normal.y)) &&
+								(AreEqual(vertexListExpanded[j].Normal.z, compactedVertexList[k].Normal.z)) &&
+								(AreEqual(vertexListExpanded[j].Normal.w, compactedVertexList[k].Normal.w)) &&
+								(AreEqual(vertexListExpanded[j].Pos.x, compactedVertexList[k].Pos.x)) &&
+								(AreEqual(vertexListExpanded[j].Pos.y, compactedVertexList[k].Pos.y)) &&
+								(AreEqual(vertexListExpanded[j].Pos.z, compactedVertexList[k].Pos.z)) &&
+								(AreEqual(vertexListExpanded[j].Pos.w, compactedVertexList[k].Pos.w)) &&
+								(AreEqual(vertexListExpanded[j].Color.x, compactedVertexList[k].Color.x)) &&
+								(AreEqual(vertexListExpanded[j].Color.y, compactedVertexList[k].Color.y)) &&
+								(AreEqual(vertexListExpanded[j].Color.z, compactedVertexList[k].Color.z)) &&
+								(AreEqual(vertexListExpanded[j].Color.w, compactedVertexList[k].Color.w)) &&
+								(AreEqual(vertexListExpanded[j].Tex.x, compactedVertexList[k].Tex.x)) &&
+								(AreEqual(vertexListExpanded[j].Tex.y, compactedVertexList[k].Tex.y)))
 							{
 								compactedIndexList[j] = k;
 								thereIsACopy = true;
@@ -300,22 +351,22 @@ namespace MFBXExporter
 
 
 					// copy working data to the global SimpleMesh
-					simpleMesh.indicesList.assign(compactedIndexList.begin(), compactedIndexList.end());
-					simpleMesh.vertexList.assign(compactedVertexList.begin(), compactedVertexList.end());
+					moralesMesh.indicesList.assign(compactedIndexList.begin(), compactedIndexList.end());
+					moralesMesh.vertexList.assign(compactedVertexList.begin(), compactedVertexList.end());
 
 					// print out some stats
 					std::cout << "\nindex count BEFORE/AFTER compaction " << numIndices;
 					std::cout << "\nvertex count ORIGINAL (FBX source): " << numVertices;
 					std::cout << "\nvertex count AFTER expansion: " << numIndices;
-					std::cout << "\nvertex count AFTER compaction: " << simpleMesh.vertexList.size();
-					std::cout << "\nSize reduction: " << ((numVertices - simpleMesh.vertexList.size()) / (float)numVertices) * 100.00f << "%";
-					std::cout << "\nor " << (simpleMesh.vertexList.size() / (float)numVertices) << " of the expanded size";
+					std::cout << "\nvertex count AFTER compaction: " << moralesMesh.vertexList.size();
+					std::cout << "\nSize reduction: " << ((numVertices - moralesMesh.vertexList.size()) / (float)numVertices) * 100.00f << "%";
+					std::cout << "\nor " << (moralesMesh.vertexList.size() / (float)numVertices) << " of the expanded size\n";
 				}
 				else
 				{
 					// copy working data to the global SimpleMesh
-					simpleMesh.indicesList.assign(indicesList.begin(), indicesList.end());
-					simpleMesh.vertexList.assign(vertexListExpanded.begin(), vertexListExpanded.end());
+					moralesMesh.indicesList.assign(indicesList.begin(), indicesList.end());
+					moralesMesh.vertexList.assign(vertexListExpanded.begin(), vertexListExpanded.end());
 				}
 
 				// Print out the mesh's texture file
@@ -327,10 +378,9 @@ namespace MFBXExporter
 					
 					if (material != NULL)
 					{
-						std::cout << "\nmaterial: " << material->GetName() << std::endl;
+						//std::cout << "\n OLD********* -- material: " << material->GetName() << std::endl;
 						// This only gets the material of type sDiffuse, you probably need to traverse all Standard Material Property by its name to get all possible textures.
 						FbxProperty prop = material->FindProperty(FbxSurfaceMaterial::sDiffuse);
-						//material->FindProperty(FbxSurfaceMaterial::);
 
 						// Check if it's layeredtextures
 						int layeredTextureCount = prop.GetSrcObjectCount<FbxLayeredTexture>();
@@ -347,7 +397,7 @@ namespace MFBXExporter
 									FbxFileTexture* texture = FbxCast<FbxFileTexture>(layered_texture->GetSrcObject<FbxTexture>(k));
 									// Then, you can get all the properties of the texture, include its name
 									const char* textureName = texture->GetFileName();
-									std::cout << textureName;
+									//std::cout << " OLD********* -- " << textureName;
 								}
 							}
 						}
@@ -360,10 +410,10 @@ namespace MFBXExporter
 								FbxFileTexture* texture = FbxCast<FbxFileTexture>(prop.GetSrcObject<FbxTexture>(j));
 								// Then, you can get all the properties of the texture, include its name
 								const char* textureName = texture->GetFileName();
-								std::cout << textureName;
+								//std::cout << " OLD********* -- " << textureName;
 
 								FbxProperty p = texture->RootProperty.Find("Filename");
-								std::cout << p.Get<FbxString>() << std::endl;
+								//std::cout << " OLD********* -- " << p.Get<FbxString>() << std::endl;
 
 							}
 						}
@@ -371,6 +421,98 @@ namespace MFBXExporter
 				}
 
 			}
+		}
+	}
+
+	void ProcessFbxMaterials(FbxScene* Scene)
+	{
+		int num_mats = Scene->GetMaterialCount();
+
+		for (int i = 0; i < num_mats; i++)
+		{
+			MoralesMaterial material;
+			FbxSurfaceMaterial* mat = Scene->GetMaterial(i);
+
+			if (!mat->Is<FbxSurfaceLambert>()) { continue; }
+
+			FbxSurfaceLambert* lambert = (FbxSurfaceLambert*)mat;
+			FbxDouble3 diffuse_color = lambert->Diffuse.Get();
+			FbxDouble diffuse_factor = lambert->DiffuseFactor.Get();
+
+			FbxDouble3 emissive_color = lambert->Emissive.Get();
+			FbxDouble emissive_factor = lambert->EmissiveFactor.Get();
+			
+			//FbxDouble3 shininess_color = lambert->.Get();
+			//FbxDouble shininess_factor = lambert->EmissiveFactor.Get();
+
+			material[MoralesMaterial::DIFFUSE].value[0] = diffuse_color.mData[0];
+			material[MoralesMaterial::DIFFUSE].value[1] = diffuse_color.mData[1];
+			material[MoralesMaterial::DIFFUSE].value[2] = diffuse_color.mData[2];
+			material[MoralesMaterial::DIFFUSE].factor = diffuse_factor;
+
+			std::cout << "Diffuse Material Color: " << material[MoralesMaterial::DIFFUSE].value[0] << " ";
+			std::cout << material[MoralesMaterial::DIFFUSE].value[1] << " "; 
+			std::cout << material[MoralesMaterial::DIFFUSE].value[2] << '\n';
+			std::cout << "Diffuse Material Factor: " << material[MoralesMaterial::DIFFUSE].factor << '\n';
+
+			if (FbxFileTexture* file_texture_lambert = lambert->Diffuse.GetSrcObject<FbxFileTexture>())
+			{
+				const char* file_name = file_texture_lambert->GetRelativeFileName(); 
+				std::string file_path = file_name; 
+				material[MoralesMaterial::DIFFUSE].input = moralesMesh.materialPaths.size(); 
+				moralesMesh.materialPaths.push_back(file_path);
+				std::cout << "Diffuse Material Filepath: \n\t" << file_path << "\n\n";
+			}
+
+
+
+			material[MoralesMaterial::EMISSIVE].value[0] = emissive_color.mData[0];
+			material[MoralesMaterial::EMISSIVE].value[1] = emissive_color.mData[1];
+			material[MoralesMaterial::EMISSIVE].value[2] = emissive_color.mData[2];
+			material[MoralesMaterial::EMISSIVE].factor = emissive_factor;
+
+			std::cout << "Emissive Material Color: " << material[MoralesMaterial::EMISSIVE].value[0] << " ";
+			std::cout << material[MoralesMaterial::EMISSIVE].value[1] << " ";
+			std::cout << material[MoralesMaterial::EMISSIVE].value[2] << '\n';
+			std::cout << "Emissive Material Factor: " << material[MoralesMaterial::EMISSIVE].factor << '\n';
+
+			if (FbxFileTexture* file_texture_emissive = lambert->Emissive.GetSrcObject<FbxFileTexture>())
+			{
+				const char* file_name = file_texture_emissive->GetRelativeFileName();
+				std::string file_path = file_name;
+				material[MoralesMaterial::EMISSIVE].input = moralesMesh.materialPaths.size();
+				moralesMesh.materialPaths.push_back(file_path);
+				std::cout << "Emissive Material Filepath: \n\t" << file_path << "\n\n";
+			}
+
+
+			if(mat->Is<FbxSurfacePhong>())
+			{
+				FbxSurfacePhong* phong = (FbxSurfacePhong*)mat;
+				FbxDouble3 phong_color = phong->Specular.Get();
+				FbxDouble phong_factor = phong->SpecularFactor.Get();
+
+				material[MoralesMaterial::SPECULAR].value[0] = phong_color.mData[0];
+				material[MoralesMaterial::SPECULAR].value[1] = phong_color.mData[1];
+				material[MoralesMaterial::SPECULAR].value[2] = phong_color.mData[2];
+				material[MoralesMaterial::SPECULAR].factor = phong_factor;
+
+				std::cout << "Specular Material Color: " << material[MoralesMaterial::SPECULAR].value[0] << " ";
+				std::cout << material[MoralesMaterial::SPECULAR].value[1] << " ";
+				std::cout << material[MoralesMaterial::SPECULAR].value[2] << '\n';
+				std::cout << "Specular Material Factor: " << material[MoralesMaterial::SPECULAR].factor << '\n';
+
+				if (FbxFileTexture* file_texture = phong->Specular.GetSrcObject<FbxFileTexture>())
+				{
+					const char* file_name = file_texture->GetRelativeFileName();
+					std::string file_path = file_name;
+					material[MoralesMaterial::SPECULAR].input = moralesMesh.materialPaths.size();
+					moralesMesh.materialPaths.push_back(file_path);
+					std::cout << "Specular Material Filepath: \n\t" << file_path << "\n\n";
+				}
+			}
+			
+			moralesMesh.materialList.push_back(material);
 		}
 	}
 
@@ -382,11 +524,23 @@ namespace MFBXExporter
 
 		uint32_t index_count = (uint32_t)mesh.indicesList.size();
 		uint32_t vert_count = (uint32_t)mesh.vertexList.size();
+		uint32_t mat_count = (uint32_t)mesh.materialList.size();
+		uint32_t matp_count = (uint32_t)mesh.materialPaths.size();
 
 		file.write((const char*)&index_count, sizeof(uint32_t));
-		file.write((const char*)mesh.indicesList.data(), sizeof(uint32_t) * mesh.indicesList.size());
+		file.write((const char*)mesh.indicesList.data(), sizeof(uint32_t) * index_count);
 		file.write((const char*)&vert_count, sizeof(uint32_t));
-		file.write((const char*)mesh.vertexList.data(), sizeof(MoralesVertex) * mesh.vertexList.size());
+		file.write((const char*)mesh.vertexList.data(), sizeof(MoralesVertex) * vert_count);
+		file.write((const char*)&mat_count, sizeof(uint32_t));
+		file.write((const char*)mesh.materialList.data(), sizeof(MoralesMaterial) * mat_count);
+		// loop material pathes
+		for (size_t i = 0; i < matp_count; i++)
+		{
+			uint32_t string_size = mesh.materialPaths[i].size();
+			file.write((const char*)&string_size, sizeof(uint32_t));
+			file.write(mesh.materialPaths[i].c_str(), sizeof(char) * string_size);
+		}
+
 		file.close();
 	}
 
@@ -397,7 +551,11 @@ namespace MFBXExporter
 		return fileName;
 	}
 
-
+	// Pretty basic implmentation of float equality. May be changed later.
+	bool AreEqual(float a, float b)
+	{
+		return fabs(a - b) <= std::numeric_limits<float>::epsilon();
+	}
 }
 
 int main(int argc, char** argv)
