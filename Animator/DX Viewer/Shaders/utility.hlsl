@@ -11,8 +11,9 @@ cbuffer ConstantBuffer : register(b0)
     matrix InverseTransposeWorld;
 }
 
-Texture2D g_texture : register(t0);
-texture2D g_texture1 : register(t1);
+Texture2D txDiffuse : register(t0);
+Texture2D txEmissive : register(t1);
+Texture2D txSpecular : register(t2);
 SamplerState g_sampler : register(s0);
 
 struct PS_Input
@@ -38,8 +39,4 @@ struct GS_Output
     float4 posH : SV_POSITION;
 };
 
-void main()
-{
-    
-}
 

@@ -521,6 +521,7 @@ namespace MRenderer
 
 		file.read((char*)inputMesh.vertices.data(), sizeof(InputVertex) * player_vertex_count);
 
+
 		//TODO: Read material data
 
 		file.close();
@@ -547,10 +548,10 @@ namespace MRenderer
 
 		for (int i = 0; i < inputMesh.vertices.size(); i++)
 		{
-			mesh.vertices[i].position.x = inputMesh.vertices[i].position.x / 50.0f;
-			mesh.vertices[i].position.y = inputMesh.vertices[i].position.y / 50.0f;
-			mesh.vertices[i].position.z = inputMesh.vertices[i].position.z / 50.0f;
-			mesh.vertices[i].position.w = inputMesh.vertices[i].position.w;
+			mesh.vertices[i].position.x = inputMesh.vertices[i].position.x;
+			mesh.vertices[i].position.y = inputMesh.vertices[i].position.y;
+			mesh.vertices[i].position.z = inputMesh.vertices[i].position.z;
+			mesh.vertices[i].position.w = 1.0f; //inputMesh.vertices[i].position.w; //HACK for now, mesh doesn't have w values appearantly.
 			mesh.vertices[i].normal.x = inputMesh.vertices[i].normal.x;
 			mesh.vertices[i].normal.y = inputMesh.vertices[i].normal.y;
 			mesh.vertices[i].normal.z = inputMesh.vertices[i].normal.z;
@@ -563,6 +564,8 @@ namespace MRenderer
 		{
 			mesh.indices[i] = inputMesh.indices[i];
 		}
+
+
 
 		std::cout << "File Loaded\n";
 	}
