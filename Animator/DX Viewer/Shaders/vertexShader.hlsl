@@ -1,4 +1,4 @@
-#include "Utility.hlsl"
+#include "utility.hlsl"
 
 //struct VS_INPUT
 //{
@@ -15,11 +15,6 @@ PS_Input main(VS_Input input)
     
 
     result.position = mul(result.position, World);
-    
-    
-    result.position.x += input.instancePosition.x;
-    result.position.y += input.instancePosition.y;
-    result.position.z += input.instancePosition.z;
     
     ////Do point light calculation
     //float3 tmp =
@@ -40,11 +35,11 @@ PS_Input main(VS_Input input)
     result.position = mul(result.position, View);
     result.position = mul(result.position, Projection);
     
-    result.normal = mul(float4(input.normal, 1), InverseTransposeWorld).xyz;
+    result.normal = mul(input.normal, InverseTransposeWorld).xyz;
     
     result.tex = input.uv;
     
-    result.normalWS = mul(input.normal, (float3x3)World);
+    result.normalWS = mul(input.normal, World);
 
     return result;
 }

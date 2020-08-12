@@ -17,7 +17,6 @@ namespace MFBXExporter
 	{
 		XMFLOAT4 Pos;
 		XMFLOAT4 Normal;
-		XMFLOAT4 Color;
 		XMFLOAT2 Tex;
 	};
 
@@ -329,10 +328,6 @@ namespace MFBXExporter
 								(AreEqual(vertexListExpanded[j].Pos.y, compactedVertexList[k].Pos.y)) &&
 								(AreEqual(vertexListExpanded[j].Pos.z, compactedVertexList[k].Pos.z)) &&
 								(AreEqual(vertexListExpanded[j].Pos.w, compactedVertexList[k].Pos.w)) &&
-								(AreEqual(vertexListExpanded[j].Color.x, compactedVertexList[k].Color.x)) &&
-								(AreEqual(vertexListExpanded[j].Color.y, compactedVertexList[k].Color.y)) &&
-								(AreEqual(vertexListExpanded[j].Color.z, compactedVertexList[k].Color.z)) &&
-								(AreEqual(vertexListExpanded[j].Color.w, compactedVertexList[k].Color.w)) &&
 								(AreEqual(vertexListExpanded[j].Tex.x, compactedVertexList[k].Tex.x)) &&
 								(AreEqual(vertexListExpanded[j].Tex.y, compactedVertexList[k].Tex.y)))
 							{
@@ -533,6 +528,7 @@ namespace MFBXExporter
 		file.write((const char*)mesh.vertexList.data(), sizeof(MoralesVertex) * vert_count);
 		file.write((const char*)&mat_count, sizeof(uint32_t));
 		file.write((const char*)mesh.materialList.data(), sizeof(MoralesMaterial) * mat_count);
+		file.write((const char*)&matp_count, sizeof(uint32_t));
 		// loop material pathes
 		for (size_t i = 0; i < matp_count; i++)
 		{

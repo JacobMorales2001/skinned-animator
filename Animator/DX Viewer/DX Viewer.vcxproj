@@ -101,9 +101,12 @@
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <FxCompile>
+      <ShaderModel>5.0</ShaderModel>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -138,28 +141,32 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="DebugRenderer.cpp" />
     <ClCompile Include="GraphicsApplication.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="XTime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="DebugRenderer.hpp" />
     <ClInclude Include="GraphicsApplication.hpp" />
-    <ClInclude Include="Shaders\allgreen.h" />
-    <ClInclude Include="Shaders\GeoPipePixel.h" />
-    <ClInclude Include="Shaders\GeoPipeVert.h" />
-    <ClInclude Include="Shaders\pixelShader.h" />
-    <ClInclude Include="Shaders\PointToTriangle.h" />
-    <ClInclude Include="Shaders\utility.h" />
-    <ClInclude Include="Shaders\vertexShader.h" />
+    <ClInclude Include="XTime.h" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders\allgreen.hlsl" />
-    <FxCompile Include="Shaders\GeoPipePixel.hlsl" />
-    <FxCompile Include="Shaders\GeoPipeVert.hlsl" />
-    <FxCompile Include="Shaders\pixelShader.hlsl" />
-    <FxCompile Include="Shaders\PointToTriangle.hlsl" />
-    <FxCompile Include="Shaders\utility.hlsl" />
-    <FxCompile Include="Shaders\vertexShader.hlsl" />
+    <FxCompile Include="Shaders\greyColor.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="Shaders\pixelShader.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\utility.hlsl">
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Effect</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\vertexShader.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

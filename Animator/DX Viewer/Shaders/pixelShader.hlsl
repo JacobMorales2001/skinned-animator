@@ -1,4 +1,4 @@
-#include "Utility.hlsl"
+#include "utility.hlsl"
 
 //Texture2D txDiffuse : register(t0);
 //SamplerState samLinear : register(s0);

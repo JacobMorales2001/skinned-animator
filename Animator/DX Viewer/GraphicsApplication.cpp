@@ -35,6 +35,8 @@ namespace MRenderer
 		m_camera.mouseLock = false;
 		m_camera.fov = XM_PIDIV4;
 
+		timer.Restart();
+
 
 #pragma warning(disable: 4996) // Disable function or variable may be unsafe.
 		AllocConsole();
@@ -94,6 +96,8 @@ namespace MRenderer
 		CreateDescriptorHeaps();
 		
 		CreateFrameResources();
+
+		CreateFrameAllocator();
 		
 		LoadAssets();
 
@@ -103,8 +107,12 @@ namespace MRenderer
 	HRESULT GraphicsApplication::LoadAssets()
 	{
 		// Load Assets
+		
+		LoadMesh(DefaultCube.mesh);
 
 		CreateRootSignature();
+
+		CreateShaders();
 
 		CreatePipelineStates();
 
@@ -174,10 +182,6 @@ namespace MRenderer
 		m_commandQueue.Reset();
 		m_rootSignature.Reset();
 		m_rtvHeap.Reset();
-		for (int i = 0; i < m_pipelineState.size(); ++i)
-		{
-			m_pipelineState[i].Reset();
-		}
 		m_commandList.Reset();
 		m_constantBuffer.Reset();
 		m_cbvHeap.Reset();
@@ -192,31 +196,21 @@ namespace MRenderer
 
 	void GraphicsApplication::Update()
 	{
-		static const float speed = 0.01f;
-		static float tt = 0.0f;
-		static float t = 0.0f;
-		static ULONGLONG timeStart = 0;
-		static ULONGLONG timeCur = GetTickCount64();
-		t = (GetTickCount64() - timeCur);
-		//std::cout << t << '\n';
-		timeCur = GetTickCount64();
-		if (timeStart == 0) {
-			timeStart = timeCur;
-		}
-		tt = (timeCur - timeStart) / 1000.0f;
+		timer.Signal();
+		static float speed = 1.5f;
 
 		// Check for input
 		if ((GetAsyncKeyState((SHORT)'W') & 0xF000))
 		{
 			// Move forward
-			m_camera.cameraTranslation.z = t * speed;
+			m_camera.cameraTranslation.z = timer.Delta() * speed;
 
 			// vCameraTranslation += cameraMatrix.AxisZ * t * speed;
 		}
 		if ((GetAsyncKeyState((SHORT)'S') & 0xF000))
 		{
 			// Move backwards
-			m_camera.cameraTranslation.z = -t * speed;
+			m_camera.cameraTranslation.z = -timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState((SHORT)'A') & 0xF000))
 		{
@@ -226,7 +220,7 @@ namespace MRenderer
 			// make camera translation a float3;
 			// to move "camera-relative" right:
 			// vCameraTranslation += cameraMatrix.AxisX * t * speed;
-			m_camera.cameraTranslation.x = -t * speed;
+			m_camera.cameraTranslation.x = -timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState((SHORT)'D') & 0xF000))
 		{
@@ -236,7 +230,7 @@ namespace MRenderer
 			// make camera translation a float3;
 			// to move "camera-relative" left:
 			// vCameraTranslation -= cameraMatrix.AxisX * t * speed;
-			m_camera.cameraTranslation.x = t * speed;
+			m_camera.cameraTranslation.x = timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState(VK_SPACE) & 0xF000))
 		{
@@ -245,16 +239,16 @@ namespace MRenderer
 
 			// we want global translation for up and down:
 			//vCameraTranslation.y += t * speed;
-			m_camera.cameraTranslation.y = t * speed;
+			m_camera.cameraTranslation.y = timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState(VK_LSHIFT) & 0xF000))
 		{
 			// Move down
 			//yTranslation -= t * speed;
-			m_camera.cameraTranslation.y = -t * speed;
+			m_camera.cameraTranslation.y = -timer.Delta() * speed;
 		}
 		static bool escDownLastFrame = false;
-		if ((GetAsyncKeyState(VK_ESCAPE) & 0xF000) && !escDownLastFrame)
+		if ((GetAsyncKeyState('M') & 0xF000) && !escDownLastFrame)
 		{
 			m_camera.mouseLock = !m_camera.mouseLock;
 			escDownLastFrame = true;
@@ -265,51 +259,12 @@ namespace MRenderer
 				SetCursorPos(p.x, p.y);
 			}
 		}
-		else if (!(GetAsyncKeyState(VK_ESCAPE) & 0xF000) && escDownLastFrame)
+		else if (!(GetAsyncKeyState('M') & 0xF000) && escDownLastFrame)
 		{
 			escDownLastFrame = false;
 		}
 
-		static float nearPlane = 0.01f;
-		static float farPlane = 100.0f;
-		if ((GetAsyncKeyState((SHORT)'Z') & 0xF000))
-		{
-			nearPlane -= t * speed;
-			nearPlane = max(nearPlane, 0.01f);
-			nearPlane = min(nearPlane, 45.0f);
-		}
-		if ((GetAsyncKeyState((SHORT)'X') & 0xF000))
-		{
-			nearPlane += t * speed;
-			nearPlane = max(nearPlane, 0.01f);
-			nearPlane = min(nearPlane, 45.0f);
-		}
-		if ((GetAsyncKeyState((SHORT)'C') & 0xF000))
-		{
-			farPlane -= t * speed * 100;
-			farPlane = max(farPlane, 50.0f);
-			farPlane = min(farPlane, 100.0f);
-		}
-		if ((GetAsyncKeyState((SHORT)'V') & 0xF000))
-		{
-			farPlane += t * speed * 100;
-			farPlane = max(farPlane, 50.0f);
-			farPlane = min(farPlane, 100.0f);
-		}
-		if ((GetAsyncKeyState((SHORT)'B') & 0xF000))
-		{
-			m_camera.fov += t * speed * 0.5f;
-			m_camera.fov = max(m_camera.fov, XM_PIDIV4 * 0.5f);
-			m_camera.fov = min(m_camera.fov, XM_PIDIV2);
-		}
-		if ((GetAsyncKeyState((SHORT)'N') & 0xF000))
-		{
-			m_camera.fov -= t * speed * 0.5f;
-			m_camera.fov = max(m_camera.fov, XM_PIDIV4 * 0.5f);
-			m_camera.fov = min(m_camera.fov, XM_PIDIV2);
-		}
-
-		m_projection = XMMatrixPerspectiveFovLH(m_camera.fov, m_windowWidth / (FLOAT)m_windowHeight, nearPlane, farPlane);
+		m_projection = XMMatrixPerspectiveFovLH(m_camera.fov, m_windowWidth / (FLOAT)m_windowHeight, 0.1f, 100.0f);
 
 
 		if (m_camera.mouseLock)
@@ -323,8 +278,8 @@ namespace MRenderer
 			// POINT MouseDelta   = CurrentMousePosition - PreviousMousePosition;
 			//m_Camera.horizontalAngle += fTurnSpeed * t * MouseDelta.x;
 
-			m_camera.horizontalAngle -= 0.0001f * t * static_cast<float>(m_windowWidth / 2 - m_camera.mousePos.x);
-			m_camera.verticalAngle -= 0.0001f * t * static_cast<float>(m_windowHeight / 2 - m_camera.mousePos.y);
+			m_camera.horizontalAngle -= 0.075f * timer.Delta() * static_cast<float>(m_windowWidth / 2 - m_camera.mousePos.x);
+			m_camera.verticalAngle -= 0.075f * timer.Delta() * static_cast<float>(m_windowHeight / 2 - m_camera.mousePos.y);
 			// Clamp y to top and bottom
 			m_camera.verticalAngle = m_camera.verticalAngle > XM_PIDIV2 ? m_camera.verticalAngle = XM_PIDIV2 : m_camera.verticalAngle < -XM_PIDIV2 ? -XM_PIDIV2 : m_camera.verticalAngle;
 			// Clamp x to be in the range of -PI - PI
@@ -334,7 +289,7 @@ namespace MRenderer
 
 
 
-		m_world = XMMatrixRotationY(tt);
+		//m_world = XMMatrixRotationY(tt);
 		m_constantBufferData.mWorld = XMMatrixTranspose(m_world);
 
 		XMFLOAT4 temp = {};
@@ -352,7 +307,7 @@ namespace MRenderer
 
 		// Lighting updates
 
-		m_constantBufferData.vLightDir[0].y += t * m_directionalLightRotation * speed * 0.01f;
+		m_constantBufferData.vLightDir[0].y += timer.Delta() * m_directionalLightRotation * speed * 0.01f;
 		//std::cout << m_constantBufferData.vLightDir[0].y << '\n';
 		if (m_constantBufferData.vLightDir[0].y > 1.0f)
 		{
@@ -363,7 +318,7 @@ namespace MRenderer
 			m_directionalLightRotation = 1.0f;
 		}
 
-		m_constantBufferData.vLightPosition[1].y += t * m_pointLightLocation * speed * 0.01f;
+		m_constantBufferData.vLightPosition[1].y += timer.Delta() * m_pointLightLocation * speed * 0.01f;
 		if (m_constantBufferData.vLightPosition[1].y > 3.0f)
 		{
 			m_pointLightLocation = -1.0f;
@@ -373,7 +328,7 @@ namespace MRenderer
 			m_pointLightLocation = 1.0f;
 		}
 
-		m_constantBufferData.vPointLightRadius.x += t * m_pointLightRadius * speed * 0.01f;
+		m_constantBufferData.vPointLightRadius.x += timer.Delta() * m_pointLightRadius * speed * 0.01f;
 		if (m_constantBufferData.vPointLightRadius.x > 6.0f)
 		{
 			m_pointLightLocation = -1.0f;
@@ -383,7 +338,7 @@ namespace MRenderer
 			m_pointLightLocation = 1.0f;
 		}
 
-		m_constantBufferData.vLightPosition[2].x += t * m_spotLightLocation * speed * 0.01f;
+		m_constantBufferData.vLightPosition[2].x += timer.Delta() * m_spotLightLocation * speed * 0.01f;
 		if (m_constantBufferData.vLightPosition[2].x > 5.0f)
 		{
 			m_spotLightLocation = -1.0f;
@@ -393,7 +348,7 @@ namespace MRenderer
 			m_spotLightLocation = 1.0f;
 		}
 
-		m_constantBufferData.vLightDir[2].z += t * m_spotLightRotation * speed * 0.001f;
+		m_constantBufferData.vLightDir[2].z += timer.Delta() * m_spotLightRotation * speed * 0.001f;
 		if (m_constantBufferData.vLightDir[2].z > 1.0f)
 		{
 			m_constantBufferData.vLightDir[2].z = 1.0f;
@@ -443,7 +398,7 @@ namespace MRenderer
 		// However, when ExecuteCommandList() is called on a particular command 
 		// list, that command list can then be reset at any time and must be before 
 		// re-recording.
-		hr = m_commandList->Reset(m_commandAllocator.Get(), DefaultCube.m_pipelineState.Get());
+		hr = m_commandList->Reset(m_commandAllocator.Get(), DefaultCube.pipelineState.Get());
 		if (FAILED(hr))
 		{
 			exit(hr);
@@ -455,8 +410,8 @@ namespace MRenderer
 		m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 		m_commandList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
-		CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
-		m_commandList->SetGraphicsRootDescriptorTable(1, cbvHandle);
+		//CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
+		//m_commandList->SetGraphicsRootDescriptorTable(1, cbvHandle);
 		m_commandList->RSSetViewports(1, &m_viewport);
 		m_commandList->RSSetScissorRects(1, &m_scissorRect);
 		// Set constant buffer
@@ -482,14 +437,13 @@ namespace MRenderer
 		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		// Record commands.
-		const float clearColor[] = { 0.2f, 0.2f, 1.0f, 1.0f };
-		m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		m_commandList->ClearRenderTargetView(rtvHandle, m_clearColor, 0, nullptr);
 
 		m_commandList->ClearDepthStencilView(m_dsvHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-		m_commandList->SetPipelineState(DefaultCube.m_pipelineState.Get());
-		m_commandList->IASetVertexBuffers(0, 1, &DefaultCube.m_vertexBufferView);
-		m_commandList->IASetIndexBuffer(&DefaultCube.m_indexBufferView);
+		m_commandList->SetPipelineState(DefaultCube.pipelineState.Get());
+		m_commandList->IASetVertexBuffers(0, 1, &DefaultCube.vertexBufferView);
+		m_commandList->IASetIndexBuffer(&DefaultCube.indexBufferView);
 		m_commandList->DrawIndexedInstanced(DefaultCube.mesh.indices.size(), 1, 0, 0, 0);
 
 
@@ -537,31 +491,42 @@ namespace MRenderer
 		m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	}
 
-	void GraphicsApplication::LoadMesh(const char* meshFileName, GraphicsApplication::Mesh& mesh1)
+	void GraphicsApplication::LoadMesh(GraphicsApplication::Mesh& mesh)
 	{
-		GraphicsApplication::InputMesh mesh;
-		std::fstream file{ meshFileName, std::ios_base::in | std::ios_base::binary };
+		GraphicsApplication::InputMesh inputMesh;
+		std::string meshFileName;
+		do {
 
+			meshFileName = OpenFileName(L"Morales Binary Mesh Files (*.mbm)\0*.mbm*\0", NULL);
+
+		} while (meshFileName.empty());
+
+		std::fstream file; //{ meshFileName, std::ios_base::in | std::ios_base::binary };
+		file.open(meshFileName, std::ios_base::in | std::ios_base::binary);
 		assert(file.is_open());
 
 		uint32_t player_index_count;
 		file.read((char*)&player_index_count, sizeof(uint32_t));
 
+		inputMesh.indices.resize(player_index_count);
 		mesh.indices.resize(player_index_count);
-		mesh1.indices.resize(player_index_count);
 
-		file.read((char*)mesh.indices.data(), sizeof(uint32_t) * player_index_count);
+		file.read((char*)inputMesh.indices.data(), sizeof(uint32_t) * player_index_count);
 
 		uint32_t player_vertex_count;
 		file.read((char*)&player_vertex_count, sizeof(uint32_t));
 
+		inputMesh.vertices.resize(player_vertex_count);
 		mesh.vertices.resize(player_vertex_count);
-		mesh1.vertices.resize(player_vertex_count);
 
-		file.read((char*)mesh.vertices.data(), sizeof(InputVertex) * player_vertex_count);
+		file.read((char*)inputMesh.vertices.data(), sizeof(InputVertex) * player_vertex_count);
+
+		//TODO: Read material data
+
+		file.close();
 
 		// Example mesh conditioning if needed - this flips handedness
-		for (auto& v : mesh.vertices)
+		for (auto& v : inputMesh.vertices)
 		{
 			v.position.x = -v.position.x;
 			//v.position.y += 0.5f; // TODO: Make this not hardcoded
@@ -569,61 +534,37 @@ namespace MRenderer
 			v.tex.y = 1.0f - v.tex.y;
 		}
 
-		int tri_count = (int)(mesh.indices.size() / 3);
+		int tri_count = (int)(inputMesh.indices.size() / 3);
 
 		for (int i = 0; i < tri_count; ++i)
 		{
-			int* tri = mesh.indices.data() + i * 3;
+			int* tri = inputMesh.indices.data() + i * 3;
 
 			int temp = tri[0];
 			tri[0] = tri[2];
 			tri[2] = temp;
 		}
-		file.close();
 
-		for (int i = 0; i < mesh.vertices.size(); i++)
+		for (int i = 0; i < inputMesh.vertices.size(); i++)
 		{
-			mesh1.vertices[i].position.x = mesh.vertices[i].position.x / 50.0f;
-			mesh1.vertices[i].position.y = (mesh.vertices[i].position.y / 50.0f) + 1.0f;
-			mesh1.vertices[i].position.z = mesh.vertices[i].position.z / 50.0f;
-			mesh1.vertices[i].normal.x = mesh.vertices[i].normal.x;
-			mesh1.vertices[i].normal.y = mesh.vertices[i].normal.y;
-			mesh1.vertices[i].normal.z = mesh.vertices[i].normal.z;
-			mesh1.vertices[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			mesh1.vertices[i].tex.x = mesh.vertices[i].tex.x;
-			mesh1.vertices[i].tex.y = mesh.vertices[i].tex.y;
+			mesh.vertices[i].position.x = inputMesh.vertices[i].position.x / 50.0f;
+			mesh.vertices[i].position.y = inputMesh.vertices[i].position.y / 50.0f;
+			mesh.vertices[i].position.z = inputMesh.vertices[i].position.z / 50.0f;
+			mesh.vertices[i].position.w = inputMesh.vertices[i].position.w;
+			mesh.vertices[i].normal.x = inputMesh.vertices[i].normal.x;
+			mesh.vertices[i].normal.y = inputMesh.vertices[i].normal.y;
+			mesh.vertices[i].normal.z = inputMesh.vertices[i].normal.z;
+			mesh.vertices[i].normal.w = inputMesh.vertices[i].normal.w;
+			mesh.vertices[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			mesh.vertices[i].tex.x = inputMesh.vertices[i].tex.x;
+			mesh.vertices[i].tex.y = inputMesh.vertices[i].tex.y;
 		}
-		for (int i = 0; i < mesh.indices.size(); i++)
+		for (int i = 0; i < inputMesh.indices.size(); i++)
 		{
-			mesh1.indices[i] = mesh.indices[i];
-		}
-	}
-
-	GraphicsApplication::Mesh GraphicsApplication::ProceduralSphereMesh(Mesh& mesh, const XMFLOAT3& position, float Radius)
-	{
-		mesh.vertices.clear();
-		mesh.indices.clear();
-
-		mesh.vertices.resize(12 * 12);
-		for (int i = 0; i < 12; ++i)
-		{
-			for (int j = 0; j < 12; ++j)
-			{
-				XMFLOAT3 temp = position;
-				temp.x += sin(XM_PI * (((float)i) / 12.0f)) * cos(XM_2PI * ((float)(j) / 12.0f));
-				temp.y += sin(XM_PI * (((float)i) / 12.0f)) * sin(XM_2PI * ((float)(j) / 12.0f));
-				temp.z += cos(XM_PI * ((float)(i) / 12.0f));
-				temp.x *= Radius;
-				temp.y *= Radius;
-				temp.z *= Radius;
-				mesh.vertices[(i * 10) + j].position = temp;
-				mesh.vertices[(i * 10) + j].normal = { 0.0f, 0.0f, 0.0f };
-				mesh.vertices[(i * 10) + j].color = { 0.0f, 1.0f, 0.0f, 1.0f };
-				mesh.vertices[(i * 10) + j].tex = { 0.0f, 0.0f };
-			}
+			mesh.indices[i] = inputMesh.indices[i];
 		}
 
-		return mesh;
+		std::cout << "File Loaded\n";
 	}
 
 	bool GraphicsApplication::CreateDevice()
@@ -633,7 +574,7 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the IDXGI Factory 4\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		// We don't instruct to use a WARP device
@@ -644,7 +585,7 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the D3D12 Device\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		return true;
@@ -661,7 +602,7 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the Command Queue\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		return true;
@@ -691,13 +632,13 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the Swap Chain\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		hr = swapChain.As(&m_swapChain); if (FAILED(hr))
 		{
 			std::cout << "Failed to create the Swap Chain\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		return true;
@@ -717,7 +658,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the Descriptor Heap\n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 
@@ -731,7 +672,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the Descriptor Heap\n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 			m_cbvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -745,7 +686,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the Descriptor Heap\n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 			//D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
@@ -789,7 +730,7 @@ namespace MRenderer
 				if (FAILED(hr))
 				{
 					std::cout << "Failed to create the Frame Resources\n";
-					return E_FAIL;
+					exit(hr);
 				}
 				m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
 				rtvHandle.ptr += (1 * m_rtvDescriptorSize);
@@ -808,7 +749,7 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the Command Allocator\n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		return true;
@@ -884,14 +825,14 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to serialize the root signature. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 			hr = m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the root signature. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 		}
 
@@ -904,90 +845,68 @@ namespace MRenderer
 		{
 
 			//CreateDDSTextureFromFile(m_device.Get(), L"../Macaw.dds", 0, false, nullptr, );
-			m_pipelineState.resize(NUM_PIPELINE_STATES);
-			for (int i = 0; i < m_pipelineState.size(); ++i)
-			{
 				// Define the vertex input layout.
-				D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-				{
-					{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-					{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-					{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-					{ "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-					{ "BOOLTEX", 0, DXGI_FORMAT_R32_UINT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-					{ "INSTANCEPOS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
-				};
+			D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+			{
+				{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			};
 
-				// Describe and create the graphics pipeline state object (PSO).
-				D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-				psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-				psoDesc.pRootSignature = m_rootSignature.Get();
-				if (i == 0)
-				{
-					psoDesc.PS = { pixelShader, _countof(pixelShader) };
-					psoDesc.VS = { vertexShader, _countof(vertexShader) };
-				}
-				else if (i == 1)
-				{
-					psoDesc.PS = { allgreen, _countof(allgreen) };
-					psoDesc.VS = { vertexShader, _countof(vertexShader) };
-				}
-				else
-				{
-					psoDesc.PS = { pixelShader, _countof(pixelShader) };
-					psoDesc.VS = { GeoPipeVert, _countof(GeoPipeVert) };
-				}
+			// Describe and create the graphics pipeline state object (PSO).
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+			psoDesc.pRootSignature = m_rootSignature.Get();
+			psoDesc.PS = { DefaultCube.pixelShaderByteCode, DefaultCube.pixelShaderByteCodeSize };
+			psoDesc.VS = { DefaultCube.vertexShaderByteCode, DefaultCube.vertexShaderByteCodeSize };
 
-				D3D12_RASTERIZER_DESC rasterizerDesc;
-				rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
-				rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
-				rasterizerDesc.FrontCounterClockwise = FALSE;
-				rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
-				rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
-				rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-				rasterizerDesc.DepthClipEnable = TRUE;
-				rasterizerDesc.MultisampleEnable = FALSE;
-				rasterizerDesc.AntialiasedLineEnable = FALSE;
-				rasterizerDesc.ForcedSampleCount = 0;
-				rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-				psoDesc.RasterizerState = rasterizerDesc;
+			D3D12_RASTERIZER_DESC rasterizerDesc;
+			rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+			rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+			rasterizerDesc.FrontCounterClockwise = FALSE;
+			rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+			rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+			rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+			rasterizerDesc.DepthClipEnable = TRUE;
+			rasterizerDesc.MultisampleEnable = FALSE;
+			rasterizerDesc.AntialiasedLineEnable = FALSE;
+			rasterizerDesc.ForcedSampleCount = 0;
+			rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+			psoDesc.RasterizerState = rasterizerDesc;
 
-				D3D12_BLEND_DESC blendDesc;
-				blendDesc.AlphaToCoverageEnable = FALSE;
-				blendDesc.IndependentBlendEnable = FALSE;
-				blendDesc.RenderTarget[0].BlendEnable = FALSE;
-				blendDesc.RenderTarget[0].LogicOpEnable = FALSE;
-				blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
-				blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
-				blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-				blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-				blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-				blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-				blendDesc.RenderTarget[0].LogicOp = D3D12_LOGIC_OP_NOOP;
-				blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-				psoDesc.BlendState = blendDesc;
+			D3D12_BLEND_DESC blendDesc;
+			blendDesc.AlphaToCoverageEnable = FALSE;
+			blendDesc.IndependentBlendEnable = FALSE;
+			blendDesc.RenderTarget[0].BlendEnable = FALSE;
+			blendDesc.RenderTarget[0].LogicOpEnable = FALSE;
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+			blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+			blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].LogicOp = D3D12_LOGIC_OP_NOOP;
+			blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+			psoDesc.BlendState = blendDesc;
 
-				psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-				psoDesc.DepthStencilState.DepthEnable = TRUE;
-				psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-				psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-				psoDesc.DepthStencilState.StencilEnable = FALSE;
-				psoDesc.DepthStencilState.BackFace = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-				psoDesc.DepthStencilState.FrontFace = psoDesc.DepthStencilState.BackFace;
-				psoDesc.SampleMask = UINT_MAX;
-				//if (i < 2)
-				psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-				//else
-				//	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-				psoDesc.NumRenderTargets = 1;
-				psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-				psoDesc.SampleDesc.Count = 1;
-				HRESULT hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState[i]));
-				if (FAILED(hr))
-				{
-					std::cout << "Failed to create the graphics pipeline state. \n";
-					return E_FAIL;
-				}
+			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+			psoDesc.DepthStencilState.DepthEnable = TRUE;
+			psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+			psoDesc.DepthStencilState.StencilEnable = FALSE;
+			psoDesc.DepthStencilState.BackFace = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+			psoDesc.DepthStencilState.FrontFace = psoDesc.DepthStencilState.BackFace;
+			psoDesc.SampleMask = UINT_MAX;
+			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			psoDesc.NumRenderTargets = 1;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.SampleDesc.Count = 1;
+			HRESULT hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&DefaultCube.pipelineState));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the graphics pipeline state. \n";
+				exit(hr);
 			}
 		}
 
@@ -997,11 +916,11 @@ namespace MRenderer
 	bool GraphicsApplication::CreateCommandList()
 	{
 		// Create the command list.
-		HRESULT hr = m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState[0].Get(), IID_PPV_ARGS(&m_commandList));
+		HRESULT hr = m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), DefaultCube.pipelineState.Get(), IID_PPV_ARGS(&m_commandList));
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to create the command list. \n";
-			return E_FAIL;
+			exit(hr);
 		}
 
 		return true;
@@ -1043,7 +962,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the depth stencil\n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 
@@ -1060,6 +979,41 @@ namespace MRenderer
 
 	bool GraphicsApplication::CreateShaders()
 	{
+		std::fstream fin;
+		//char d[MAX_PATH];
+
+		//GetCurrentDirectoryA(MAX_PATH, d);
+
+		fin.open("../x64/Debug/greyColor.cso", std::ios_base::in | std::ios_base::binary);
+
+		assert(fin.is_open());
+
+		fin.seekg(0, fin.end);
+		size_t length = fin.tellg();
+		fin.seekg(0, fin.beg);
+
+		DefaultCube.pixelShaderByteCode = new char[length];
+		DefaultCube.pixelShaderByteCodeSize = length;
+
+		fin.read(DefaultCube.pixelShaderByteCode, length);
+
+		fin.close();
+
+		fin.open("../x64/Debug/vertexShader.cso", std::ios_base::in | std::ios_base::binary);
+		
+		assert(fin.is_open());
+
+		fin.seekg(0, fin.end);
+		length = fin.tellg();
+		fin.seekg(0, fin.beg);
+
+		DefaultCube.vertexShaderByteCode = new char[length];
+		DefaultCube.vertexShaderByteCodeSize = length;
+
+		fin.read(DefaultCube.vertexShaderByteCode, length);
+
+		fin.close();
+
 		return true;
 	}
 
@@ -1093,6 +1047,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the descriptor heap for the constant buffer. \n";
+				exit(hr);
 			}
 
 			// Create the constant buffer view
@@ -1109,7 +1064,7 @@ namespace MRenderer
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to map the constant buffer. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 			memcpy(m_pCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
 
@@ -1157,42 +1112,43 @@ namespace MRenderer
 		// Create the vertex buffer.
 		{
 			// Define the geometry for a triangle.
-			Vertex vertices[] =
-			{
-				{ XMFLOAT3(-1.0f, 1.0f, -1.0f),  XMFLOAT3(0.0f, 1.0f, 0.0f),  XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, -1.0f),   XMFLOAT3(0.0f, 1.0f, 0.0f),  XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, 1.0f),    XMFLOAT3(0.0f, 1.0f, 0.0f),  XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, 1.0f, 1.0f),   XMFLOAT3(0.0f, 1.0f, 0.0f),  XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+			//Vertex vertices[] =
+			//{
+			//	{ XMFLOAT4(-1.0f, 1.0f, -1.0f, 1.0f),  XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, -1.0f, 1.0f),   XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f),  XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f),    XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f),  XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, 1.0f, 1.0f, 1.0f),   XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
 
-				{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, -1.0f, -1.0f),  XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, -1.0f, 1.0f),   XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, -1.0f, 1.0f),  XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, -1.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, -1.0f, 0.0f, 1.0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, -1.0f, 1.0f),  XMFLOAT4(0.0f, -1.0f, 0.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f),   XMFLOAT4(0.0f, -1.0f, 0.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f),  XMFLOAT4(0.0f, -1.0f, 0.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
 
-				{ XMFLOAT3(-1.0f, -1.0f, 1.0f),  XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, 1.0f, -1.0f),  XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, 1.0f, 1.0f),   XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f),  XMFLOAT4(-1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, -1.0f, -1.0f, 1.0f), XMFLOAT4(-1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, 1.0f, -1.0f, 1.0f),  XMFLOAT4(-1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, 1.0f, 1.0f, 1.0f),   XMFLOAT4(-1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
 
-				{ XMFLOAT3(1.0f, -1.0f, 1.0f),   XMFLOAT3(1.0f, 0.0f, 0.0f),  XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, -1.0f, -1.0f),  XMFLOAT3(1.0f, 0.0f, 0.0f),  XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, -1.0f),   XMFLOAT3(1.0f, 0.0f, 0.0f),  XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, 1.0f),    XMFLOAT3(1.0f, 0.0f, 0.0f),  XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f),   XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, -1.0f, 1.0f),  XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, -1.0f, 1.0f),   XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f),    XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
 
-				{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, -1.0f, -1.0f),  XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, -1.0f),   XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, 1.0f, -1.0f),  XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, -1.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, -1.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, -1.0f, 1.0f),   XMFLOAT4(0.0f, 0.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, 1.0f, -1.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, -1.0f, 1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
 
-				{ XMFLOAT3(-1.0f, -1.0f, 1.0f),  XMFLOAT3(0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, -1.0f, 1.0f),   XMFLOAT3(0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
-				{ XMFLOAT3(1.0f, 1.0f, 1.0f),    XMFLOAT3(0.0f, 0.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
-				{ XMFLOAT3(-1.0f, 1.0f, 1.0f),   XMFLOAT3(0.0f, 0.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
-			};
+			//	{ XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f),  XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f),   XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+			//	{ XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f),    XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f),  XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+			//	{ XMFLOAT4(-1.0f, 1.0f, 1.0f, 1.0f),   XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f),  XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+			//};
 
-			const UINT vertexBufferSize = _countof(vertices) * sizeof(Vertex);
-			DefaultCube.mesh.vertices.resize(_countof(vertices));
-			memcpy(DefaultCube.mesh.vertices.data(), vertices, vertexBufferSize);
+			const UINT vertexBufferSize = DefaultCube.mesh.vertices.size() * sizeof(Vertex);
+
+			//DefaultCube.mesh.vertices.resize(_countof(vertices));
+			//memcpy(DefaultCube.mesh.vertices.data(), vertices, vertexBufferSize);
 
 			// Note: using upload heaps to transfer static data like vert buffers is not 
 			// recommended. Every time the GPU needs it, the upload heap will be marshalled 
@@ -1226,11 +1182,11 @@ namespace MRenderer
 				&resourceDesc,
 				D3D12_RESOURCE_STATE_GENERIC_READ,
 				nullptr,
-				IID_PPV_ARGS(&DefaultCube.m_vertexBuffer)));
+				IID_PPV_ARGS(&DefaultCube.vertexBuffer)));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the committed resource. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 			// Copy the triangle data to the vertex buffer.
@@ -1238,19 +1194,19 @@ namespace MRenderer
 			D3D12_RANGE readRange;	// We do not intend to read from this resource on the CPU.
 			readRange.Begin = 0;
 			readRange.End = 0;
-			hr = DefaultCube.m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
+			hr = DefaultCube.vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to map the vertex buffer. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 			memcpy(pVertexDataBegin, DefaultCube.mesh.vertices.data(), vertexBufferSize);
-			DefaultCube.m_vertexBuffer->Unmap(0, nullptr);
+			DefaultCube.vertexBuffer->Unmap(0, nullptr);
 
 			// Initialize the vertex buffer view.
-			DefaultCube.m_vertexBufferView.BufferLocation = DefaultCube.m_vertexBuffer->GetGPUVirtualAddress();
-			DefaultCube.m_vertexBufferView.StrideInBytes = sizeof(Vertex);
-			DefaultCube.m_vertexBufferView.SizeInBytes = vertexBufferSize;
+			DefaultCube.vertexBufferView.BufferLocation = DefaultCube.vertexBuffer->GetGPUVirtualAddress();
+			DefaultCube.vertexBufferView.StrideInBytes = sizeof(Vertex);
+			DefaultCube.vertexBufferView.SizeInBytes = vertexBufferSize;
 		}
 
 		return true;
@@ -1259,30 +1215,31 @@ namespace MRenderer
 	bool GraphicsApplication::CreateIndexBuffers()
 	{
 		{
-			int indices[] =
-			{
-				3,1,0,
-				2,1,3,
+			//int indices[] =
+			//{
+			//	3,1,0,
+			//	2,1,3,
 
-				6,4,5,
-				7,4,6,
+			//	6,4,5,
+			//	7,4,6,
 
-				11,9,8,
-				10,9,11,
+			//	11,9,8,
+			//	10,9,11,
 
-				14,12,13,
-				15,12,14,
+			//	14,12,13,
+			//	15,12,14,
 
-				19,17,16,
-				18,17,19,
+			//	19,17,16,
+			//	18,17,19,
 
-				22,20,21,
-				23,20,22
-			};
+			//	22,20,21,
+			//	23,20,22
+			//};
 
 			const UINT64 indexBufferSize = DefaultCube.mesh.indices.size() * sizeof(int);
 
-			memcpy(DefaultCube.mesh.indices.data(), indices, indexBufferSize);
+			//DefaultCube.mesh.indices.resize(_countof(indices));
+			//memcpy(DefaultCube.mesh.indices.data(), indices, indexBufferSize);
 
 
 			D3D12_HEAP_PROPERTIES heapProperties;
@@ -1311,11 +1268,11 @@ namespace MRenderer
 				&resourceDesc,
 				D3D12_RESOURCE_STATE_GENERIC_READ,
 				nullptr,
-				IID_PPV_ARGS(&DefaultCube.m_indexBuffer)));
+				IID_PPV_ARGS(&DefaultCube.indexBuffer)));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the committed resource. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 
 			// Copy the index data to the index buffer.
@@ -1323,19 +1280,19 @@ namespace MRenderer
 			D3D12_RANGE readRange;	// We do not intend to read from this resource on the CPU.
 			readRange.Begin = 0;
 			readRange.End = 0;
-			hr = DefaultCube.m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
+			hr = DefaultCube.indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to map the index buffer. \n";
-				return E_FAIL;
+				exit(hr);
 			}
 			memcpy(pIndexDataBegin, DefaultCube.mesh.indices.data(), sizeof(UINT32) * DefaultCube.mesh.indices.size());
-			DefaultCube.m_indexBuffer->Unmap(0, nullptr);
+			DefaultCube.indexBuffer->Unmap(0, nullptr);
 
 			// Initialize the index buffer view.
-			DefaultCube.m_indexBufferView.BufferLocation = DefaultCube.m_indexBuffer->GetGPUVirtualAddress();
-			DefaultCube.m_indexBufferView.SizeInBytes = indexBufferSize;
-			DefaultCube.m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+			DefaultCube.indexBufferView.BufferLocation = DefaultCube.indexBuffer->GetGPUVirtualAddress();
+			DefaultCube.indexBufferView.SizeInBytes = indexBufferSize;
+			DefaultCube.indexBufferView.Format = DXGI_FORMAT_R32_UINT;
 		}
 
 		return true;
@@ -1465,12 +1422,33 @@ namespace MRenderer
 		if (FAILED(hr))
 		{
 			std::cout << "Failed to close the command list. \n";
-			return E_FAIL;
+			exit(hr);
 		}
 		ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 		m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 		return true;
+	}
+
+	std::string GraphicsApplication::OpenFileName(const wchar_t* filter, HWND owner) 
+	{
+		OPENFILENAME ofn;
+		wchar_t fileName[MAX_PATH] = L"";
+		ZeroMemory(&ofn, sizeof(ofn));
+		ofn.lStructSize = sizeof(OPENFILENAME);
+		ofn.hwndOwner = owner;
+		ofn.lpstrFilter = filter;
+		ofn.lpstrFile = fileName;
+		ofn.nMaxFile = MAX_PATH;
+		ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+		ofn.lpstrDefExt = L"";
+		std::wstring fileNameStr;
+		if (GetOpenFileName(&ofn))
+			fileNameStr = fileName;
+
+		std::string returnString = std::string(fileNameStr.begin(), fileNameStr.end());
+
+		return returnString;
 	}
 
 }

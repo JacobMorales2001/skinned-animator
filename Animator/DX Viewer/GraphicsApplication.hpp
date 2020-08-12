@@ -1,7 +1,7 @@
 #pragma once
 
 // Windows includes
-#define WIN32_LEAN_AND_MEAN // Disregard uncommon windows options, save on build time
+//#define WIN32_LEAN_AND_MEAN // Disregard uncommon windows options, save on build time
 #include <Windows.h>
 #include <wrl/client.h>
 
@@ -18,12 +18,12 @@
 
 
 // Shader includes
-#include "Shaders/pixelShader.h"
-#include "Shaders/vertexShader.h"
-#include "Shaders/allgreen.h"
-#include "Shaders/GeoPipeVert.h"
-#include "Shaders/GeoPipePixel.h"
-#include "Shaders/PointToTriangle.h"
+//#include "Shaders/pixelShader.h"
+//#include "Shaders/vertexShader.h"
+//#include "Shaders/allgreen.h"
+//#include "Shaders/GeoPipeVert.h"
+//#include "Shaders/GeoPipePixel.h"
+//#include "Shaders/PointToTriangle.h"
 
 // Console includes
 #include <iostream>
@@ -34,6 +34,7 @@
 //#include "interstellar.h"
 #include <vector>
 #include <fstream>
+#include "XTime.h"
 
 namespace MRenderer
 {
@@ -47,17 +48,16 @@ namespace MRenderer
 	private:
 		struct Vertex
 		{
-			XMFLOAT3 position;
-			XMFLOAT3 normal;
+			XMFLOAT4 position;
+			XMFLOAT4 normal;
 			XMFLOAT4 color;
 			XMFLOAT2 tex;
-			unsigned int useTex;
 		};
 
 		struct InputVertex
 		{
-			XMFLOAT3 position;
-			XMFLOAT3 normal;
+			XMFLOAT4 position;
+			XMFLOAT4 normal;
 			XMFLOAT2 tex;
 		};
 
@@ -108,16 +108,23 @@ namespace MRenderer
 		{
 			Mesh mesh;
 
-			ComPtr<ID3D12Resource>          m_vertexBuffer;
-			D3D12_VERTEX_BUFFER_VIEW        m_vertexBufferView;
+			ComPtr<ID3D12Resource>          vertexBuffer;
+			D3D12_VERTEX_BUFFER_VIEW        vertexBufferView;
 
-			ComPtr<ID3D12Resource>          m_indexBuffer;
-			D3D12_INDEX_BUFFER_VIEW         m_indexBufferView;
+			ComPtr<ID3D12Resource>          indexBuffer;
+			D3D12_INDEX_BUFFER_VIEW         indexBufferView;
 
-			ComPtr<ID3D12Resource>          m_instanceBuffer;
-			D3D12_VERTEX_BUFFER_VIEW        m_instanceBufferView;
+			ComPtr<ID3D12Resource>          instanceBuffer;
+			D3D12_VERTEX_BUFFER_VIEW        instanceBufferView;
 
-			ComPtr<ID3D12PipelineState>     m_pipelineState;
+			ComPtr<ID3D12PipelineState>     pipelineState;
+
+			char*							pixelShaderByteCode;
+			size_t							pixelShaderByteCodeSize;
+
+			char*							vertexShaderByteCode;
+			size_t							vertexShaderByteCodeSize;
+
 
 		};
 	public:
@@ -142,8 +149,7 @@ namespace MRenderer
 		void WaitForPreviousFrame();
 		void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 		void PopulateCommandList();
-		void LoadMesh(const char* meshFileName, Mesh& mesh1);
-		Mesh ProceduralSphereMesh(Mesh& mesh, const XMFLOAT3& position, float Radius);
+		void LoadMesh(Mesh& mesh1);
 
 		bool CreateDevice();
 		bool CreateCommandQueue();
@@ -165,6 +171,7 @@ namespace MRenderer
 
 		bool CreateShaders();
 		bool CreateConstantBuffers();
+		std::string OpenFileName(const wchar_t* filter, HWND owner);
 
 
 
@@ -187,6 +194,7 @@ namespace MRenderer
 		ComPtr<IDXGIAdapter1>				hardwareAdapter;
 
 		// Pipeline objects.
+		float								m_clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
 		D3D12_VIEWPORT                      m_viewport;
 		D3D12_RECT                          m_scissorRect;
 		ComPtr<IDXGISwapChain3>             m_swapChain;
@@ -197,8 +205,6 @@ namespace MRenderer
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12RootSignature>         m_computeRootSignature;
 		ComPtr<ID3D12DescriptorHeap>        m_rtvHeap;
-#define NUM_PIPELINE_STATES 3
-		vector<ComPtr<ID3D12PipelineState>>	m_pipelineState;
 		ComPtr<ID3D12PipelineState>			m_computeState;
 		ComPtr<ID3D12GraphicsCommandList>   m_commandList;
 		UINT                                m_rtvDescriptorSize = 0;
@@ -228,6 +234,10 @@ namespace MRenderer
 		float							m_pointLightRadius = 1.0f;
 		float							m_spotLightLocation = 1.0f;
 		float							m_spotLightRotation = 1.0f;
+
+		XTime							timer;
+
+
 
 		// Asset Resources
 		RenderObject DefaultCube;

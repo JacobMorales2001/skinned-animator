@@ -6,7 +6,7 @@
 //--------------------------------------------------------------------------------------
 // Forward declarations
 //--------------------------------------------------------------------------------------
-HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow, GraphicsApplication& g_gApp);
+HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow, MRenderer::GraphicsApplication& g_gApp);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 //void Render();
 
@@ -17,7 +17,7 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 //--------------------------------------------------------------------------------------
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
-    GraphicsApplication g_gApp(800, 600);
+    MRenderer::GraphicsApplication g_gApp(800, 600);
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
@@ -50,7 +50,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 //--------------------------------------------------------------------------------------
 // Register class and create window
 //--------------------------------------------------------------------------------------
-HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow, GraphicsApplication& g_gApp)
+HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow, MRenderer::GraphicsApplication& g_gApp)
 {
     //TODO: Allow Resizing in the creation of the window
 

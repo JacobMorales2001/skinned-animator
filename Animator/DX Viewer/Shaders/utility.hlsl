@@ -23,20 +23,23 @@ struct PS_Input
     float3 normal : NORMAL;
     float4 color : COLOR;
     float2 tex : TEX;
-    uint useTex : BOOLTEX;
 };
 
 struct VS_Input
 {
     float4 position : POSITION;
-    float3 normal : NORMAL;
+    float4 normal : NORMAL;
     float4 color : COLOR;
     float4 uv : TEX;
-    float3 instancePosition : INSTANCEPOS;
 };
 
 struct GS_Output
 {
     float4 posH : SV_POSITION;
 };
+
+void main()
+{
+    
+}
 
