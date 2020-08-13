@@ -9,6 +9,9 @@ cbuffer ConstantBuffer : register(b0)
     float4 vOutputColor;
     float4 vPointLightRadius;
     matrix InverseTransposeWorld;
+    float4 mDiffuseColor;
+    float4 mEmissiveColor;
+    float4 mSpecularColor;
 }
 
 Texture2D txDiffuse : register(t0);
@@ -24,6 +27,7 @@ struct PS_Input
     float3 normal : NORMAL;
     float4 color : COLOR;
     float2 tex : TEX;
+    float4 eye_pos : EYEPOS;
 };
 
 struct VS_Input
@@ -34,9 +38,8 @@ struct VS_Input
     float4 uv : TEX;
 };
 
-struct GS_Output
+struct PS_OUTPUT
 {
-    float4 posH : SV_POSITION;
+    float4 color : SV_TARGET;
 };
-
 

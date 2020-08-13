@@ -10,7 +10,7 @@
 #include "d3dx12.h"
 #include <dxgi1_6.h>
 #include <DirectXMath.h>
-//#include "DDSTextureLoader.h"
+#include "DirectXTex.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib") // Needed to fix an unresolved external for CreateDXGIFactory1
@@ -61,10 +61,31 @@ namespace MRenderer
 			XMFLOAT2 tex;
 		};
 
+		struct Material
+		{
+			enum ComponentType { EMISSIVE = 0, DIFFUSE, SPECULAR, SHININESS, COUNT };
+
+			struct Component
+			{
+				float value[3] = { 0.0f, 0.0f, 0.0f };
+				float factor = 0.0f;
+				int64_t input = -1;
+			};
+
+			Component& operator[](int i) { return components[i]; }
+
+			const Component& operator[](int i) const { return components[i]; }
+
+		private:
+			Component components[COUNT];
+		};
+
 		struct Mesh
 		{
 			std::vector<Vertex> vertices;
 			std::vector<int> indices;
+			std::vector<Material> materials;
+			std::vector<std::string> materialPaths;
 		};
 
 		struct InputMesh
@@ -83,9 +104,14 @@ namespace MRenderer
 			XMFLOAT4 vLightPosition[3];
 			XMFLOAT4 vOutputColor;
 			XMFLOAT4 vPointLightRadius;
+
 			XMMATRIX mInverseTransposeWorld;
 			XMMATRIX mViewProjection;
-			//XMMATRIX 
+
+			// first 3 floats are rgb colors and last float for factor
+			XMFLOAT4 mDiffuseColor;
+			XMFLOAT4 mEmissiveColor;
+			XMFLOAT4 mSpecularColor;
 		};
 
 		struct Camera
@@ -149,7 +175,7 @@ namespace MRenderer
 		void WaitForPreviousFrame();
 		void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 		void PopulateCommandList();
-		void LoadMesh(Mesh& mesh1);
+		void LoadMesh(Mesh& mesh);
 
 		bool CreateDevice();
 		bool CreateCommandQueue();
@@ -167,7 +193,7 @@ namespace MRenderer
 		bool CreateTextures();
 		bool ExecuteCommandList();
 		bool SetupDepthStencil();
-		bool SetupRasterizer();
+		//bool SetupRasterizer();
 
 		bool CreateShaders();
 		bool CreateConstantBuffers();
@@ -192,9 +218,12 @@ namespace MRenderer
 		// Factory objects.
 		ComPtr<IDXGIFactory4>				factory;
 		ComPtr<IDXGIAdapter1>				hardwareAdapter;
+		ComPtr<ID3D12Resource>				textureUploadHeap;
+		ComPtr<ID3D12Resource>				textureUploadHeap1;
+		ComPtr<ID3D12Resource>				textureUploadHeap2;
 
 		// Pipeline objects.
-		float								m_clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+		float								m_clearColor[4] = {0.5f, 0.5f, 0.5f, 1.0f};
 		D3D12_VIEWPORT                      m_viewport;
 		D3D12_RECT                          m_scissorRect;
 		ComPtr<IDXGISwapChain3>             m_swapChain;
@@ -225,6 +254,7 @@ namespace MRenderer
 		ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 		ComPtr<ID3D12Resource>			m_texture;
 		ComPtr<ID3D12Resource>			m_texture1;
+		ComPtr<ID3D12Resource>			m_texture2;
 		XMMATRIX                        m_world;
 		XMMATRIX                        m_view;
 		XMMATRIX                        m_projection;

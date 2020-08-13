@@ -410,10 +410,18 @@ namespace MRenderer
 		m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 		m_commandList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
-		//CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
-		//m_commandList->SetGraphicsRootDescriptorTable(1, cbvHandle);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
+		m_commandList->SetGraphicsRootDescriptorTable(1, cbvHandle);
 		m_commandList->RSSetViewports(1, &m_viewport);
 		m_commandList->RSSetScissorRects(1, &m_scissorRect);
+		//CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_cbvDescriptorSize);
+		//m_commandList->SetGraphicsRootDescriptorTable(2, cbvHandle);
+		//m_commandList->RSSetViewports(2, &m_viewport);
+		//m_commandList->RSSetScissorRects(2, &m_scissorRect);
+		//CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), 3, m_cbvDescriptorSize);
+		//m_commandList->SetGraphicsRootDescriptorTable(3, cbvHandle);
+		//m_commandList->RSSetViewports(3, &m_viewport);
+		//m_commandList->RSSetScissorRects(3, &m_scissorRect);
 		// Set constant buffer
 
 		//ID3D12DescriptorHeap* ppHeaps1[] = { m_srvHeap.Get() };
@@ -506,25 +514,57 @@ namespace MRenderer
 		assert(file.is_open());
 
 		uint32_t player_index_count;
+		uint32_t player_vertex_count;
+		uint32_t player_material_count;
+		uint32_t player_material_path_count;
+
+		// Read the index count and all the indices.
+
 		file.read((char*)&player_index_count, sizeof(uint32_t));
 
 		inputMesh.indices.resize(player_index_count);
-		mesh.indices.resize(player_index_count);
 
 		file.read((char*)inputMesh.indices.data(), sizeof(uint32_t) * player_index_count);
 
-		uint32_t player_vertex_count;
+		// Read the veretx count and all the vertices.
+
 		file.read((char*)&player_vertex_count, sizeof(uint32_t));
 
 		inputMesh.vertices.resize(player_vertex_count);
-		mesh.vertices.resize(player_vertex_count);
 
 		file.read((char*)inputMesh.vertices.data(), sizeof(InputVertex) * player_vertex_count);
 
+		// Read the material count and all the materials.
 
-		//TODO: Read material data
+		file.read((char*)&player_material_count, sizeof(uint32_t));
+
+		mesh.materials.resize(player_material_count);
+
+		file.read((char*)mesh.materials.data(), sizeof(Material) * player_material_count);
+
+		// Read the material path count and all the material paths.
+
+		file.read((char*)&player_material_path_count, sizeof(uint32_t));
+
+		mesh.materialPaths.resize(player_material_path_count);
+
+		for (uint32_t i = 0; i < player_material_path_count; i++)
+		{
+			// Read each path separately.
+			uint32_t path_size;
+			file.read((char*)&path_size, sizeof(uint32_t));
+			char* buffer = new char[path_size + 1];
+			file.read(buffer, path_size * sizeof(char));
+			buffer[path_size] = '\0';
+			mesh.materialPaths[i] = std::string(buffer);
+			delete[] buffer;
+
+		}
 
 		file.close();
+
+		mesh.indices.resize(player_index_count);
+		mesh.vertices.resize(player_vertex_count);
 
 		// Example mesh conditioning if needed - this flips handedness
 		for (auto& v : inputMesh.vertices)
@@ -667,7 +707,7 @@ namespace MRenderer
 
 			// Describe and create a constant buffer view (CBV) descriptor heap and a srv heap.
 			D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-			cbvHeapDesc.NumDescriptors = 3;
+			cbvHeapDesc.NumDescriptors = 4;
 			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			cbvHeapDesc.NodeMask = 0;
@@ -782,7 +822,7 @@ namespace MRenderer
 			ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
 			ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 			//ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
 			rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
@@ -987,7 +1027,7 @@ namespace MRenderer
 
 		//GetCurrentDirectoryA(MAX_PATH, d);
 
-		fin.open("../x64/Debug/greyColor.cso", std::ios_base::in | std::ios_base::binary);
+		fin.open("../x64/Debug/BlinnPhongPixel.cso", std::ios_base::in | std::ios_base::binary);
 
 		assert(fin.is_open());
 
@@ -1002,7 +1042,7 @@ namespace MRenderer
 
 		fin.close();
 
-		fin.open("../x64/Debug/vertexShader.cso", std::ios_base::in | std::ios_base::binary);
+		fin.open("../x64/Debug/BlinnPhongVertex.cso", std::ios_base::in | std::ios_base::binary);
 		
 		assert(fin.is_open());
 
@@ -1084,8 +1124,8 @@ namespace MRenderer
 			m_world = XMMatrixIdentity();
 
 			// view
-			XMVECTOR Eye = { 0.0f, 1.0f, -5.0f, 0.0f };
-			XMVECTOR At = { 0.0f, 1.0f, 0.0f, 0.0f };
+			XMVECTOR Eye = { 0.0f, 3.0f, 10.0f, 0.0f };
+			XMVECTOR At = { 0.0f, 2.5f, 0.0f, 0.0f };
 			XMVECTOR Up = { 0.0f, 1.0f, 0.0f, 0.0f };
 			m_view = XMMatrixLookAtLH(Eye, At, Up);
 
@@ -1093,18 +1133,33 @@ namespace MRenderer
 			m_projection = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_windowWidth / (FLOAT)m_windowHeight, 0.01f, 100.0f);
 
 			m_constantBufferData.vLightDir[0] = { -0.577f, 0.577f, -0.577f, 1.0f };
-			m_constantBufferData.vLightDir[1] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			m_constantBufferData.vLightDir[1] = { 10.0f, 0.0f, 0.0f, 1.0f };
 			m_constantBufferData.vLightDir[2] = { 0.1f, 0.0f, -1.0f, 1.0f };
 
 			m_constantBufferData.vLightPosition[0] = { 0.0f, 0.0f, 0.0f, 1.0f };
-			m_constantBufferData.vLightPosition[1] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			m_constantBufferData.vLightPosition[1] = { -1.0f, 2.5f, -2.0f, 1.0f };
 			m_constantBufferData.vLightPosition[2] = { 4.0f, 2.0f, 0.0f, 1.0f };
 
 			m_constantBufferData.vLightColor[0] = { 0.5f, 0.5f, 0.5f, 1.0f };
-			m_constantBufferData.vLightColor[1] = { 1.0f, 0.0f, 1.0f, 1.0f };
+			m_constantBufferData.vLightColor[1] = { 1.0f, 1.0f, 1.0f, 1.0f };
 			m_constantBufferData.vLightColor[2] = { 0.0f, 1.0f, 0.0f, 1.0f };
 
 			m_constantBufferData.vPointLightRadius = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			m_constantBufferData.mDiffuseColor.x = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[0];
+			m_constantBufferData.mDiffuseColor.y = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[1];
+			m_constantBufferData.mDiffuseColor.z = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[2];
+			m_constantBufferData.mDiffuseColor.w = DefaultCube.mesh.materials[0][Material::DIFFUSE].factor;
+
+			m_constantBufferData.mEmissiveColor.x = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[0];
+			m_constantBufferData.mEmissiveColor.y = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[1];
+			m_constantBufferData.mEmissiveColor.z = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[2];
+			m_constantBufferData.mEmissiveColor.w = DefaultCube.mesh.materials[0][Material::EMISSIVE].factor;
+
+			m_constantBufferData.mSpecularColor.x = DefaultCube.mesh.materials[0][Material::SPECULAR].value[0];
+			m_constantBufferData.mSpecularColor.y = DefaultCube.mesh.materials[0][Material::SPECULAR].value[1];
+			m_constantBufferData.mSpecularColor.z = DefaultCube.mesh.materials[0][Material::SPECULAR].value[2];
+			m_constantBufferData.mSpecularColor.w = DefaultCube.mesh.materials[0][Material::SPECULAR].factor;
 		}
 
 		return true;
@@ -1348,73 +1403,252 @@ namespace MRenderer
 
 	bool GraphicsApplication::CreateTextures()
 	{
-		//ComPtr<ID3D12Resource> textureUploadHeap;
+		// TODO::
+		// Need to get DirectXTex to compile and run, need to make sure that the filepath is correct and points to the correct place, need to make sure that the texture shows up and populates on the model itself. 
+		// Need to get other textures up and running and into the shader as well.
+		// Just got the .lib file from the github repo and placed it into the project, still need to include the library since I went to bed.
 
-		//// Create the texture
-		//{
-		//	D3D12_RESOURCE_DESC textureDesc = {};
-		//	textureDesc.MipLevels = 1;
-		//	textureDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-		//	textureDesc.Width = axeTexture_width;
-		//	textureDesc.Height = axeTexture_height;
-		//	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-		//	textureDesc.DepthOrArraySize = 1;
-		//	textureDesc.SampleDesc.Count = 1;
-		//	textureDesc.SampleDesc.Quality = 0;
-		//	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-		//	HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_texture));
-		//	if (FAILED(hr))
-		//	{
-		//		std::cout << "Failed to create the descriptor heap for the constant buffer. \n";
-		//		return E_FAIL;
-		//	}
 
-		//	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
-		//	//m_device->GetCopyableFootprints(&m_texture->GetDesc(), 0, 1, 0, nullptr, nullptr, nullptr, &RequiredSize);
+		// Create the diffuse texture
+		{
 
-		//	hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize), D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&textureUploadHeap));
-		//	if (FAILED(hr))
-		//	{
-		//		std::cout << "Cannot create committed resource\n";
-		//		return E_FAIL;
-		//	}
+			TexMetadata texMetaData;
+			ScratchImage scratchImage;
+			//TextureUsage
 
-		//	std::vector<UINT8> texture;
-		//	texture.resize(axeTexture_numpixels * 4);
-		//	memcpy(texture.data(), axeTexture_pixels, texture.size());
-		//	char temp = 0;
-		//	for (int i = 0; i < texture.size(); i += 4)
-		//	{
-		//		temp = texture[i];
-		//		texture[i] = texture[i + 3];
-		//		texture[i + 3] = temp;
-		//		temp = texture[i + 1];
-		//		texture[i + 1] = texture[i + 2];
-		//		texture[i + 2] = temp;
-		//	}
+			std::string filepath = DefaultCube.mesh.materialPaths[DefaultCube.mesh.materials[0][Material::DIFFUSE].input].c_str();
+			std::wstring filepathw = std::wstring(filepath.begin(), filepath.end());
+			LoadFromWICFile(filepathw.c_str(), WIC_FLAGS_FORCE_RGB, &texMetaData, scratchImage); //used for .png .bmp or whatever WIC has.
 
-		//	D3D12_SUBRESOURCE_DATA textureData = {};
-		//	textureData.pData = &texture[0];
-		//	textureData.RowPitch = axeTexture_width * 4;
-		//	textureData.SlicePitch = textureData.RowPitch * axeTexture_height;
+			D3D12_RESOURCE_DESC textureDesc = {};
+			textureDesc.MipLevels = 1;
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Width = texMetaData.width;
+			textureDesc.Height = texMetaData.height;
+			textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+			textureDesc.DepthOrArraySize = texMetaData.arraySize;
+			textureDesc.SampleDesc.Count = 1;
+			textureDesc.SampleDesc.Quality = 0;
+			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-		//	UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
+			HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_texture));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the descriptor heap for the constant buffer. \n";
+				return E_FAIL;
+			}
 
-		//	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+			const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, scratchImage.GetImageCount());
+			//m_device->GetCopyableFootprints(&m_texture->GetDesc(), 0, 1, 0, nullptr, nullptr, nullptr, &RequiredSize);
 
-		//	// Describe and create a SRV for the texture.
-		//	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		//	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		//	srvDesc.Format = textureDesc.Format;
-		//	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		//	srvDesc.Texture2D.MipLevels = 1;
-		//	srvDesc.Texture2D.MostDetailedMip = 0;
+			hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize), D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&textureUploadHeap));
+			if (FAILED(hr))
+			{
+				std::cout << "Cannot create committed resource\n";
+				return E_FAIL;
+			}
 
-		//	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
+			//std::vector<UINT8> texture;
+			//texture.resize(scratchImage.GetPixelsSize() * 4);
+			//memcpy(texture.data(), scratchImage.GetPixels(), texture.size());
+			//char temp = 0;
+			//for (int i = 0; i < texture.size(); i += 4)
+			//{
+			//	temp = texture[i];
+			//	texture[i] = texture[i + 3];
+			//	texture[i + 3] = temp;
+			//	temp = texture[i + 1];
+			//	texture[i + 1] = texture[i + 2];
+			//	texture[i + 2] = temp;
+			//}
 
-		//	m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, cbvHandle);
-		//}
+			std::vector<D3D12_SUBRESOURCE_DATA> subresources(scratchImage.GetImageCount());
+			const Image* pImages = scratchImage.GetImages();
+			for (int i = 0; i < scratchImage.GetImageCount(); ++i)
+			{
+				auto& subresource = subresources[i];
+				subresource.RowPitch = pImages[i].rowPitch;
+				subresource.SlicePitch = pImages[i].slicePitch;
+				subresource.pData = pImages[i].pixels;
+			}
+
+			UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureUploadHeap.Get(), 0, 0, subresources.size(), &subresources[0]);
+
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+			// Describe and create a SRV for the texture.
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srvDesc.Format = textureDesc.Format;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MipLevels = 1;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), 1, m_cbvDescriptorSize);
+
+			m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, cbvHandle);
+		}
+
+		// Create the emissive texture
+		{
+
+			TexMetadata texMetaData;
+			ScratchImage scratchImage;
+			//TextureUsage
+
+			std::string filepath = DefaultCube.mesh.materialPaths[DefaultCube.mesh.materials[0][Material::EMISSIVE].input].c_str();
+			std::wstring filepathw = std::wstring(filepath.begin(), filepath.end());
+			LoadFromWICFile(filepathw.c_str(), WIC_FLAGS_FORCE_RGB, &texMetaData, scratchImage); //used for .png .bmp or whatever WIC has.
+
+			D3D12_RESOURCE_DESC textureDesc = {};
+			textureDesc.MipLevels = 1;
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Width = texMetaData.width;
+			textureDesc.Height = texMetaData.height;
+			textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+			textureDesc.DepthOrArraySize = texMetaData.arraySize;
+			textureDesc.SampleDesc.Count = 1;
+			textureDesc.SampleDesc.Quality = 0;
+			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+			HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_texture1));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the descriptor heap for the constant buffer. \n";
+				return E_FAIL;
+			}
+
+			const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture1.Get(), 0, scratchImage.GetImageCount());
+			//m_device->GetCopyableFootprints(&m_texture->GetDesc(), 0, 1, 0, nullptr, nullptr, nullptr, &RequiredSize);
+
+			hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize), D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&textureUploadHeap1));
+			if (FAILED(hr))
+			{
+				std::cout << "Cannot create committed resource\n";
+				return E_FAIL;
+			}
+
+			//std::vector<UINT8> texture;
+			//texture.resize(scratchImage.GetPixelsSize() * 4);
+			//memcpy(texture.data(), scratchImage.GetPixels(), texture.size());
+			//char temp = 0;
+			//for (int i = 0; i < texture.size(); i += 4)
+			//{
+			//	temp = texture[i];
+			//	texture[i] = texture[i + 3];
+			//	texture[i + 3] = temp;
+			//	temp = texture[i + 1];
+			//	texture[i + 1] = texture[i + 2];
+			//	texture[i + 2] = temp;
+			//}
+
+			std::vector<D3D12_SUBRESOURCE_DATA> subresources(scratchImage.GetImageCount());
+			const Image* pImages = scratchImage.GetImages();
+			for (int i = 0; i < scratchImage.GetImageCount(); ++i)
+			{
+				auto& subresource = subresources[i];
+				subresource.RowPitch = pImages[i].rowPitch;
+				subresource.SlicePitch = pImages[i].slicePitch;
+				subresource.pData = pImages[i].pixels;
+			}
+
+			UpdateSubresources(m_commandList.Get(), m_texture1.Get(), textureUploadHeap1.Get(), 0, 0, subresources.size(), &subresources[0]);
+
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture1.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+			// Describe and create a SRV for the texture.
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srvDesc.Format = textureDesc.Format;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MipLevels = 1;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), 2, m_cbvDescriptorSize);
+
+			m_device->CreateShaderResourceView(m_texture1.Get(), &srvDesc, cbvHandle);
+		}
+
+		// Create the specular texture
+		{
+
+			TexMetadata texMetaData;
+			ScratchImage scratchImage;
+			//TextureUsage
+
+			std::string filepath = DefaultCube.mesh.materialPaths[DefaultCube.mesh.materials[0][Material::SPECULAR].input].c_str();
+			std::wstring filepathw = std::wstring(filepath.begin(), filepath.end());
+			LoadFromWICFile(filepathw.c_str(), WIC_FLAGS_FORCE_RGB, &texMetaData, scratchImage); //used for .png .bmp or whatever WIC has.
+
+			D3D12_RESOURCE_DESC textureDesc = {};
+			textureDesc.MipLevels = 1;
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Width = texMetaData.width;
+			textureDesc.Height = texMetaData.height;
+			textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+			textureDesc.DepthOrArraySize = texMetaData.arraySize;
+			textureDesc.SampleDesc.Count = 1;
+			textureDesc.SampleDesc.Quality = 0;
+			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+			HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_texture2));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the descriptor heap for the constant buffer. \n";
+				return E_FAIL;
+			}
+
+			const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture2.Get(), 0, scratchImage.GetImageCount());
+			//m_device->GetCopyableFootprints(&m_texture->GetDesc(), 0, 1, 0, nullptr, nullptr, nullptr, &RequiredSize);
+
+			hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize), D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&textureUploadHeap2));
+			if (FAILED(hr))
+			{
+				std::cout << "Cannot create committed resource\n";
+				return E_FAIL;
+			}
+
+			//std::vector<UINT8> texture;
+			//texture.resize(scratchImage.GetPixelsSize() * 4);
+			//memcpy(texture.data(), scratchImage.GetPixels(), texture.size());
+			//char temp = 0;
+			//for (int i = 0; i < texture.size(); i += 4)
+			//{
+			//	temp = texture[i];
+			//	texture[i] = texture[i + 3];
+			//	texture[i + 3] = temp;
+			//	temp = texture[i + 1];
+			//	texture[i + 1] = texture[i + 2];
+			//	texture[i + 2] = temp;
+			//}
+
+			std::vector<D3D12_SUBRESOURCE_DATA> subresources(scratchImage.GetImageCount());
+			const Image* pImages = scratchImage.GetImages();
+			for (int i = 0; i < scratchImage.GetImageCount(); ++i)
+			{
+				auto& subresource = subresources[i];
+				subresource.RowPitch = pImages[i].rowPitch;
+				subresource.SlicePitch = pImages[i].slicePitch;
+				subresource.pData = pImages[i].pixels;
+			}
+
+			UpdateSubresources(m_commandList.Get(), m_texture2.Get(), textureUploadHeap2.Get(), 0, 0, subresources.size(), &subresources[0]);
+
+			m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture2.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+			// Describe and create a SRV for the texture.
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srvDesc.Format = textureDesc.Format;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MipLevels = 1;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), 3, m_cbvDescriptorSize);
+
+			m_device->CreateShaderResourceView(m_texture2.Get(), &srvDesc, cbvHandle);
+		}
 
 		return true;
 	}
