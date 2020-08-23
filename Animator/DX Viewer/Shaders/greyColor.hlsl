@@ -11,8 +11,8 @@
 //};
 
 
-float4 main(PS_Input input) : SV_TARGET
-{
-    float4 c = txDiffuse.Sample(g_sampler, input.tex);
-    return c;
-}
+//float4 main(PS_Input input) : SV_TARGET
+//{
+//    float4 c = txDiffuse.Sample(g_sampler, input.tex);
+//    return c;
+//}

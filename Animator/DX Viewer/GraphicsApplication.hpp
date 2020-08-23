@@ -9,7 +9,7 @@
 #include <d3d12.h>
 #include "d3dx12.h"
 #include <dxgi1_6.h>
-#include <DirectXMath.h>
+//#include <DirectXMath.h> // gotten from MathTypes.hpp
 #include "DirectXTex.h"
 
 #pragma comment(lib, "d3d12.lib")
@@ -35,6 +35,8 @@
 #include <vector>
 #include <fstream>
 #include "XTime.h"
+#include "Shaders\utility.hlsl"
+#include "DebugRenderer.hpp"
 
 namespace MRenderer
 {
@@ -46,13 +48,6 @@ namespace MRenderer
 	class GraphicsApplication
 	{
 	private:
-		struct Vertex
-		{
-			XMFLOAT4 position;
-			XMFLOAT4 normal;
-			XMFLOAT4 color;
-			XMFLOAT2 tex;
-		};
 
 		struct InputVertex
 		{
@@ -94,24 +89,64 @@ namespace MRenderer
 			std::vector<int> indices;
 		};
 
+		struct ShaderLight
+		{
+			XMFLOAT4 Position; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			XMFLOAT4 Direction; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			XMFLOAT4 Color; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			float SpotAngle; // 4 bytes
+			float ConstantAttenuation; // 4 bytes
+			float LinearAttenuation; // 4 bytes
+			float QuadraticAttenuation; // 4 bytes
+			//----------------------------------- (16 byte boundary)
+			int LightType; // 4 bytes
+			float LightPower; // 4 bytes
+			int Enabled; // 4 bytes
+			int Padding; // 4 bytes
+			//----------------------------------- (16 byte boundary)
+		}; // Total:                           // 80 bytes (5 * 16)
+
+		struct ShaderMaterial
+		{
+			XMFLOAT4 Emissive; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			XMFLOAT4 Ambient; // 16 bytes
+			//------------------------------------(16 byte boundary)
+			XMFLOAT4 Diffuse; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			XMFLOAT4 Specular; // 16 bytes
+			//----------------------------------- (16 byte boundary)
+			float EmissiveFactor; // 4 bytes
+			float AmbientFactor; // 4 bytes
+			float DiffuseFactor; // 4 bytes
+			float SpecularFactor; // 4 bytes
+			//----------------------------------- (16 byte boundary)
+			float SpecularPower; // 4 bytes
+			int UseTexture; // 4 bytes
+			int Padding[2]; // 8 bytes
+			//----------------------------------- (16 byte boundary)
+		}; // Total:               // 80 bytes ( 5 * 16 )
+
 		struct ConstantBuffer
 		{
-			XMMATRIX mWorld;
-			XMMATRIX mView;
-			XMMATRIX mProjection;
-			XMFLOAT4 vLightDir[3];
-			XMFLOAT4 vLightColor[3];
-			XMFLOAT4 vLightPosition[3];
-			XMFLOAT4 vOutputColor;
-			XMFLOAT4 vPointLightRadius;
+			XMMATRIX World;
+			XMMATRIX InverseTransposeWorldMatrix;
+			XMMATRIX MVP;
+			ShaderMaterial Material;
+			XMFLOAT4 EyePosition;
+			XMFLOAT4 GlobalAmbient;
 
-			XMMATRIX mInverseTransposeWorld;
-			XMMATRIX mViewProjection;
+			ShaderLight Lights[MAX_LIGHTS];
+		};
 
-			// first 3 floats are rgb colors and last float for factor
-			XMFLOAT4 mDiffuseColor;
-			XMFLOAT4 mEmissiveColor;
-			XMFLOAT4 mSpecularColor;
+		struct MVP
+		{
+			XMMATRIX World;
+			XMMATRIX View;
+			XMMATRIX Projection;
 		};
 
 		struct Camera
@@ -151,6 +186,7 @@ namespace MRenderer
 			char*							vertexShaderByteCode;
 			size_t							vertexShaderByteCodeSize;
 
+			D3D12_PRIMITIVE_TOPOLOGY		PrimitiveTopology;
 
 		};
 	public:
@@ -194,6 +230,8 @@ namespace MRenderer
 		bool ExecuteCommandList();
 		bool SetupDepthStencil();
 		//bool SetupRasterizer();
+
+		bool UpdateBuffers(RenderObject RO);
 
 		bool CreateShaders();
 		bool CreateConstantBuffers();
@@ -243,8 +281,10 @@ namespace MRenderer
 		ComPtr<ID3D12Resource>          m_constantBuffer;
 		ComPtr<ID3D12DescriptorHeap>    m_cbvHeap;
 		UINT                            m_cbvDescriptorSize = 0;
+		MVP								m_MVP;
 		ConstantBuffer                  m_constantBufferData;
-		UINT8* m_pCbvDataBegin;
+		UINT8*							m_pCbvDataBegin;
+		UINT8*							m_pDebugVertexDataBegin;
 		ComPtr<ID3D12Resource>          m_depthStencil;
 		ComPtr<ID3D12DescriptorHeap>    m_dsvHeap;
 		ComPtr<ID3D12Resource>          m_sampler;
@@ -270,7 +310,10 @@ namespace MRenderer
 
 
 		// Asset Resources
-		RenderObject DefaultCube;
+		RenderObject					DefaultCube;
+		RenderObject					DefaultLineRenderer;
+		std::vector<RenderObject*>		RenderObjects;
+		float							hue = 1.0f;
 
 
 		// Synchronization objects.

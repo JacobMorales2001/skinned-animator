@@ -13,18 +13,18 @@ namespace
 	// CPU-side buffer of debug-line verts
 	// Copied to the GPU and reset every frame.
 	size_t line_vert_count = 0;
-	std::array< MRenderer::DebugRenderer::ColoredVertex, MAX_LINE_VERTS> line_verts;
+	std::array< MRenderer::Vertex, MAX_LINE_VERTS> line_verts;
 }
 
 namespace MRenderer
 {
 	namespace DebugRenderer
 	{
-		void add_line(DirectX::XMFLOAT3 point_a, DirectX::XMFLOAT3 point_b, DirectX::XMFLOAT4 color_a, DirectX::XMFLOAT4 color_b)
+		void add_line(DirectX::XMFLOAT4 point_a, DirectX::XMFLOAT4 point_b, DirectX::XMFLOAT4 color_a, DirectX::XMFLOAT4 color_b)
 		{
 			// Add points to debug_verts, increments debug_vert_count
-			line_verts[line_vert_count] = { point_a, color_a };
-			line_verts[line_vert_count + 1] = { point_b, color_b };
+			line_verts[line_vert_count] = { point_a, {0.0f, 0.0f, 0.0f, 0.0f}, color_a, {0.0f, 0.0f} };
+			line_verts[line_vert_count + 1] = { point_b, {0.0f, 0.0f, 0.0f, 0.0f}, color_b, {0.0f, 0.0f} };
 			line_vert_count += 2;
 		}
 
@@ -34,7 +34,7 @@ namespace MRenderer
 			line_vert_count = 0;
 		}
 
-		const ColoredVertex* get_line_verts()
+		const Vertex* get_line_verts()
 		{
 			// Does just what it says in the name
 			return line_verts.data();

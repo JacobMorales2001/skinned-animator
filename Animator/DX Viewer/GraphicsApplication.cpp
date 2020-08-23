@@ -35,6 +35,9 @@ namespace MRenderer
 		m_camera.mouseLock = false;
 		m_camera.fov = XM_PIDIV4;
 
+		RenderObjects.push_back(&DefaultCube);
+		RenderObjects.push_back(&DefaultLineRenderer);
+
 		timer.Restart();
 
 
@@ -199,13 +202,13 @@ namespace MRenderer
 		timer.Signal();
 		static float speed = 1.5f;
 
+		XMFLOAT4 lightPos = m_constantBufferData.Lights[0].Position;
+
 		// Check for input
 		if ((GetAsyncKeyState((SHORT)'W') & 0xF000))
 		{
 			// Move forward
 			m_camera.cameraTranslation.z = timer.Delta() * speed;
-
-			// vCameraTranslation += cameraMatrix.AxisZ * t * speed;
 		}
 		if ((GetAsyncKeyState((SHORT)'S') & 0xF000))
 		{
@@ -214,38 +217,56 @@ namespace MRenderer
 		}
 		if ((GetAsyncKeyState((SHORT)'A') & 0xF000))
 		{
-			// Move right
-			//xTranslation += t * speed;
-
-			// make camera translation a float3;
-			// to move "camera-relative" right:
-			// vCameraTranslation += cameraMatrix.AxisX * t * speed;
 			m_camera.cameraTranslation.x = -timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState((SHORT)'D') & 0xF000))
 		{
-			// Move left
-			//xTranslation -= t * speed;
-
-			// make camera translation a float3;
-			// to move "camera-relative" left:
-			// vCameraTranslation -= cameraMatrix.AxisX * t * speed;
 			m_camera.cameraTranslation.x = timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState(VK_SPACE) & 0xF000))
 		{
 			// Move up
-			//yTranslation += t * speed;
-
-			// we want global translation for up and down:
-			//vCameraTranslation.y += t * speed;
 			m_camera.cameraTranslation.y = timer.Delta() * speed;
 		}
 		if ((GetAsyncKeyState(VK_LSHIFT) & 0xF000))
 		{
 			// Move down
-			//yTranslation -= t * speed;
 			m_camera.cameraTranslation.y = -timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(VK_LEFT) & 0xF000))
+		{
+			lightPos.x += -timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(VK_RIGHT) & 0xF000))
+		{
+			lightPos.x += timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(VK_UP) & 0xF000))
+		{
+			// Move up
+			lightPos.z += -timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(VK_DOWN) & 0xF000))
+		{
+			// Move down
+			lightPos.z += timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(SHORT('O')) & 0xF000))
+		{
+			// Move up
+			m_constantBufferData.Lights[0].LightPower += -timer.Delta() * speed;
+		}
+		if ((GetAsyncKeyState(SHORT('P')) & 0xF000))
+		{
+			// Move down
+			m_constantBufferData.Lights[0].LightPower += timer.Delta() * speed;
+		}
+		if (GetAsyncKeyState('Q') & 0x1)
+		{
+			// Toggle lights
+			m_constantBufferData.Lights[0].Enabled = !m_constantBufferData.Lights[0].Enabled;
+			m_constantBufferData.Lights[1].Enabled = !m_constantBufferData.Lights[1].Enabled;
+			m_constantBufferData.Lights[2].Enabled = !m_constantBufferData.Lights[2].Enabled;
 		}
 		static bool escDownLastFrame = false;
 		if ((GetAsyncKeyState('M') & 0xF000) && !escDownLastFrame)
@@ -275,22 +296,14 @@ namespace MRenderer
 			ClientToScreen(m_window, &p);
 			SetCursorPos(p.x, p.y);
 
-			// POINT MouseDelta   = CurrentMousePosition - PreviousMousePosition;
-			//m_Camera.horizontalAngle += fTurnSpeed * t * MouseDelta.x;
-
 			m_camera.horizontalAngle -= 0.075f * timer.Delta() * static_cast<float>(m_windowWidth / 2 - m_camera.mousePos.x);
 			m_camera.verticalAngle -= 0.075f * timer.Delta() * static_cast<float>(m_windowHeight / 2 - m_camera.mousePos.y);
 			// Clamp y to top and bottom
 			m_camera.verticalAngle = m_camera.verticalAngle > XM_PIDIV2 ? m_camera.verticalAngle = XM_PIDIV2 : m_camera.verticalAngle < -XM_PIDIV2 ? -XM_PIDIV2 : m_camera.verticalAngle;
-			// Clamp x to be in the range of -PI - PI
-			//m_camera.horizontalAngle = m_camera.horizontalAngle > XM_PI ? m_camera.horizontalAngle - XM_PI : m_camera.horizontalAngle < -XM_PI ? m_camera.horizontalAngle + XM_PI : m_camera.horizontalAngle;
-			//std::cout << m_camera.verticalAngle << '\n';
 		}
 
-
-
-		//m_world = XMMatrixRotationY(tt);
-		m_constantBufferData.mWorld = XMMatrixTranspose(m_world);
+		m_constantBufferData.World = XMMatrixTranspose(m_world);
+		m_MVP.World = m_world;
 
 		XMFLOAT4 temp = {};
 		XMStoreFloat4(&temp, m_camera.matrix.r[3]);
@@ -301,70 +314,51 @@ namespace MRenderer
 		m_camera.matrix = XMMatrixTranslation(m_camera.cameraTranslation.x, 0.0f, m_camera.cameraTranslation.z) * m_camera.matrix;
 		m_camera.cameraTranslation = { 0.0f, 0.0f, 0.0f };
 
-		m_constantBufferData.mView = XMMatrixTranspose(m_view * XMMatrixInverse(nullptr, m_camera.matrix));
+		m_MVP.View = m_view * XMMatrixInverse(nullptr, m_camera.matrix);
 
-		m_constantBufferData.mProjection = XMMatrixTranspose(m_projection);
+		m_MVP.Projection = m_projection;
 
-		// Lighting updates
+		XMStoreFloat4(&m_constantBufferData.EyePosition, XMMatrixInverse(nullptr, m_MVP.View).r[3]);
 
-		m_constantBufferData.vLightDir[0].y += timer.Delta() * m_directionalLightRotation * speed * 0.01f;
-		//std::cout << m_constantBufferData.vLightDir[0].y << '\n';
-		if (m_constantBufferData.vLightDir[0].y > 1.0f)
-		{
-			m_directionalLightRotation = -1.0f;
-		}
-		else if (m_constantBufferData.vLightDir[0].y < -1.0f)
-		{
-			m_directionalLightRotation = 1.0f;
-		}
+		//std::cout << "X: " << m_constantBufferData.EyePosition.x << " Y: " << m_constantBufferData.EyePosition.y << " Z: " << m_constantBufferData.EyePosition.z << '\n';
 
-		m_constantBufferData.vLightPosition[1].y += timer.Delta() * m_pointLightLocation * speed * 0.01f;
-		if (m_constantBufferData.vLightPosition[1].y > 3.0f)
-		{
-			m_pointLightLocation = -1.0f;
-		}
-		else if (m_constantBufferData.vLightPosition[1].y < -1.0f)
-		{
-			m_pointLightLocation = 1.0f;
-		}
+		m_constantBufferData.Lights[0].Position = lightPos;
 
-		m_constantBufferData.vPointLightRadius.x += timer.Delta() * m_pointLightRadius * speed * 0.01f;
-		if (m_constantBufferData.vPointLightRadius.x > 6.0f)
-		{
-			m_pointLightLocation = -1.0f;
-		}
-		else if (m_constantBufferData.vPointLightRadius.x < 0.5f)
-		{
-			m_pointLightLocation = 1.0f;
-		}
-
-		m_constantBufferData.vLightPosition[2].x += timer.Delta() * m_spotLightLocation * speed * 0.01f;
-		if (m_constantBufferData.vLightPosition[2].x > 5.0f)
-		{
-			m_spotLightLocation = -1.0f;
-		}
-		else if (m_constantBufferData.vLightPosition[2].x < 3.0f)
-		{
-			m_spotLightLocation = 1.0f;
-		}
-
-		m_constantBufferData.vLightDir[2].z += timer.Delta() * m_spotLightRotation * speed * 0.001f;
-		if (m_constantBufferData.vLightDir[2].z > 1.0f)
-		{
-			m_constantBufferData.vLightDir[2].z = 1.0f;
-			m_spotLightRotation = -1.0f;
-		}
-		else if (m_constantBufferData.vLightDir[2].z < -1.0f)
-		{
-			m_constantBufferData.vLightDir[2].z = -1.0f;
-			m_spotLightRotation = 1.0f;
-		}
-
-		//m_constantBufferData.vLightPosition[1] = { 1.0f, 1.0f, 0.0f, 1.0f };
-		m_constantBufferData.vOutputColor = { 0.0f, 0.0f, 0.0f, 0.0f };
-		m_constantBufferData.mInverseTransposeWorld = XMMatrixTranspose(XMMatrixInverse(nullptr, m_constantBufferData.mWorld));
-		m_constantBufferData.mViewProjection = XMMatrixMultiply(m_constantBufferData.mView, m_constantBufferData.mProjection);
+		m_constantBufferData.InverseTransposeWorldMatrix = XMMatrixTranspose(XMMatrixInverse(nullptr, m_constantBufferData.World));
+		m_constantBufferData.MVP = XMMatrixTranspose(XMMatrixMultiply(XMMatrixMultiply(m_MVP.World, m_MVP.View), m_MVP.Projection));
 		memcpy(m_pCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+
+
+		hue += timer.Delta() * 0.1f;
+		if (hue > 1.0f)
+			hue = 0.0f;
+		XMVECTOR c = XMColorHSVToRGB({ hue, 1.0f, 1.0f, 1.0f });
+
+		XMFLOAT4 my_color;
+		my_color.x = XMVectorGetX(c) * 0.65f;
+		my_color.y = XMVectorGetY(c) * 0.65f;
+		my_color.z = XMVectorGetZ(c) * 0.65f;
+		my_color.w = XMVectorGetW(c) * 0.65f;
+
+		DebugRenderer::clear_lines();
+
+		for (float i = -10.0f; i < 10.5f; i += 1.0f)
+		{
+			DebugRenderer::add_line({ -10.0f, 0.0f, i, 1.0f }, { 10.0f, 0.0f, i, 1.0f }, my_color);
+			DebugRenderer::add_line({ i, 0.0f, -10.0f, 1.0f }, { i, 0.0f, 10.0f, 1.0f }, my_color);
+		}
+
+		D3D12_RANGE readRange;	// We do not intend to read from this resource on the CPU.
+		readRange.Begin = 0;
+		readRange.End = 0;
+		HRESULT hr = DefaultLineRenderer.vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_pDebugVertexDataBegin));
+		if (FAILED(hr))
+		{
+			std::cout << "Failed to map the vertex buffer. \n";
+			exit(hr);
+		}
+		memcpy(m_pDebugVertexDataBegin, DebugRenderer::get_line_verts(), DebugRenderer::get_line_vert_count() * sizeof(Vertex));
+		DefaultLineRenderer.vertexBuffer->Unmap(0, nullptr);
 	}
 
 	void GraphicsApplication::Render()
@@ -398,7 +392,7 @@ namespace MRenderer
 		// However, when ExecuteCommandList() is called on a particular command 
 		// list, that command list can then be reset at any time and must be before 
 		// re-recording.
-		hr = m_commandList->Reset(m_commandAllocator.Get(), DefaultCube.pipelineState.Get());
+		hr = m_commandList->Reset(m_commandAllocator.Get(), RenderObjects[0]->pipelineState.Get());
 		if (FAILED(hr))
 		{
 			exit(hr);
@@ -442,19 +436,23 @@ namespace MRenderer
 		D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
 		m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		// Record commands.
 		m_commandList->ClearRenderTargetView(rtvHandle, m_clearColor, 0, nullptr);
 
 		m_commandList->ClearDepthStencilView(m_dsvHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-		m_commandList->SetPipelineState(DefaultCube.pipelineState.Get());
-		m_commandList->IASetVertexBuffers(0, 1, &DefaultCube.vertexBufferView);
-		m_commandList->IASetIndexBuffer(&DefaultCube.indexBufferView);
-		m_commandList->DrawIndexedInstanced(DefaultCube.mesh.indices.size(), 1, 0, 0, 0);
+		m_commandList->IASetPrimitiveTopology(RenderObjects[0]->PrimitiveTopology);
+		m_commandList->SetPipelineState(RenderObjects[0]->pipelineState.Get());
+		m_commandList->IASetVertexBuffers(0, 1, &RenderObjects[0]->vertexBufferView);
+		m_commandList->IASetIndexBuffer(&RenderObjects[0]->indexBufferView);
+		m_commandList->DrawIndexedInstanced(RenderObjects[0]->mesh.indices.size(), 1, 0, 0, 0);
 
 
+		m_commandList->IASetPrimitiveTopology(DefaultLineRenderer.PrimitiveTopology);
+		m_commandList->SetPipelineState(DefaultLineRenderer.pipelineState.Get());
+		m_commandList->IASetVertexBuffers(0, 1, &DefaultLineRenderer.vertexBufferView);
+		m_commandList->DrawInstanced(DebugRenderer::get_line_vert_count(), 1, 0, 0);
 
 		// Indicate that the back buffer will now be used to present.
 		D3D12_RESOURCE_BARRIER resourceBarrier1;
@@ -596,7 +594,7 @@ namespace MRenderer
 			mesh.vertices[i].normal.y = inputMesh.vertices[i].normal.y;
 			mesh.vertices[i].normal.z = inputMesh.vertices[i].normal.z;
 			mesh.vertices[i].normal.w = inputMesh.vertices[i].normal.w;
-			mesh.vertices[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			//mesh.vertices[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
 			mesh.vertices[i].tex.x = inputMesh.vertices[i].tex.x;
 			mesh.vertices[i].tex.y = inputMesh.vertices[i].tex.y;
 		}
@@ -894,7 +892,7 @@ namespace MRenderer
 				{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-				{ "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 			};
 
 			// Describe and create the graphics pipeline state object (PSO).
@@ -942,10 +940,80 @@ namespace MRenderer
 			psoDesc.DepthStencilState.FrontFace = psoDesc.DepthStencilState.BackFace;
 			psoDesc.SampleMask = UINT_MAX;
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			DefaultCube.PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 			psoDesc.NumRenderTargets = 1;
 			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 			psoDesc.SampleDesc.Count = 1;
 			HRESULT hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&DefaultCube.pipelineState));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the graphics pipeline state. \n";
+				exit(hr);
+			}
+		}
+		// Create the pipeline state, which includes loading shaders.
+		{
+
+			//CreateDDSTextureFromFile(m_device.Get(), L"../Macaw.dds", 0, false, nullptr, );
+				// Define the vertex input layout.
+			D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+			{
+				{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			};
+
+			// Describe and create the graphics pipeline state object (PSO).
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+			psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+			psoDesc.pRootSignature = m_rootSignature.Get();
+			psoDesc.PS = { DefaultLineRenderer.pixelShaderByteCode, DefaultLineRenderer.pixelShaderByteCodeSize };
+			psoDesc.VS = { DefaultLineRenderer.vertexShaderByteCode, DefaultLineRenderer.vertexShaderByteCodeSize };
+
+			D3D12_RASTERIZER_DESC rasterizerDesc;
+			rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+			rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+			rasterizerDesc.FrontCounterClockwise = FALSE;
+			rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+			rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+			rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+			rasterizerDesc.DepthClipEnable = TRUE;
+			rasterizerDesc.MultisampleEnable = FALSE;
+			rasterizerDesc.AntialiasedLineEnable = FALSE;
+			rasterizerDesc.ForcedSampleCount = 0;
+			rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+			psoDesc.RasterizerState = rasterizerDesc;
+
+			D3D12_BLEND_DESC blendDesc;
+			blendDesc.AlphaToCoverageEnable = FALSE;
+			blendDesc.IndependentBlendEnable = FALSE;
+			blendDesc.RenderTarget[0].BlendEnable = FALSE;
+			blendDesc.RenderTarget[0].LogicOpEnable = FALSE;
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+			blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+			blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].LogicOp = D3D12_LOGIC_OP_NOOP;
+			blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+			psoDesc.BlendState = blendDesc;
+
+			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+			psoDesc.DepthStencilState.DepthEnable = TRUE;
+			psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+			psoDesc.DepthStencilState.StencilEnable = FALSE;
+			psoDesc.DepthStencilState.BackFace = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+			psoDesc.DepthStencilState.FrontFace = psoDesc.DepthStencilState.BackFace;
+			psoDesc.SampleMask = UINT_MAX;
+			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+			DefaultLineRenderer.PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+			psoDesc.NumRenderTargets = 1;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.SampleDesc.Count = 1;
+			HRESULT hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&DefaultLineRenderer.pipelineState));
 			if (FAILED(hr))
 			{
 				std::cout << "Failed to create the graphics pipeline state. \n";
@@ -1020,42 +1088,87 @@ namespace MRenderer
 		return true;
 	}
 
+	bool GraphicsApplication::UpdateBuffers(RenderObject RO)
+	{
+
+		return true;
+	}
+
 	bool GraphicsApplication::CreateShaders()
 	{
-		std::fstream fin;
-		//char d[MAX_PATH];
+		{
+			std::fstream fin;
+			//char d[MAX_PATH];
 
-		//GetCurrentDirectoryA(MAX_PATH, d);
+			//GetCurrentDirectoryA(MAX_PATH, d);
 
-		fin.open("../x64/Debug/BlinnPhongPixel.cso", std::ios_base::in | std::ios_base::binary);
+			fin.open("../x64/Debug/BlinnPhongPixel.cso", std::ios_base::in | std::ios_base::binary);
 
-		assert(fin.is_open());
+			assert(fin.is_open());
 
-		fin.seekg(0, fin.end);
-		size_t length = fin.tellg();
-		fin.seekg(0, fin.beg);
+			fin.seekg(0, fin.end);
+			size_t length = fin.tellg();
+			fin.seekg(0, fin.beg);
 
-		DefaultCube.pixelShaderByteCode = new char[length];
-		DefaultCube.pixelShaderByteCodeSize = length;
+			DefaultCube.pixelShaderByteCode = new char[length];
+			DefaultCube.pixelShaderByteCodeSize = length;
 
-		fin.read(DefaultCube.pixelShaderByteCode, length);
+			fin.read(DefaultCube.pixelShaderByteCode, length);
 
-		fin.close();
+			fin.close();
 
-		fin.open("../x64/Debug/BlinnPhongVertex.cso", std::ios_base::in | std::ios_base::binary);
-		
-		assert(fin.is_open());
+			fin.open("../x64/Debug/BlinnPhongVertex.cso", std::ios_base::in | std::ios_base::binary);
 
-		fin.seekg(0, fin.end);
-		length = fin.tellg();
-		fin.seekg(0, fin.beg);
+			assert(fin.is_open());
 
-		DefaultCube.vertexShaderByteCode = new char[length];
-		DefaultCube.vertexShaderByteCodeSize = length;
+			fin.seekg(0, fin.end);
+			length = fin.tellg();
+			fin.seekg(0, fin.beg);
 
-		fin.read(DefaultCube.vertexShaderByteCode, length);
+			DefaultCube.vertexShaderByteCode = new char[length];
+			DefaultCube.vertexShaderByteCodeSize = length;
 
-		fin.close();
+			fin.read(DefaultCube.vertexShaderByteCode, length);
+
+			fin.close();
+		}
+
+		{
+			std::fstream fin;
+			//char d[MAX_PATH];
+
+			//GetCurrentDirectoryA(MAX_PATH, d);
+
+			fin.open("../x64/Debug/DebugLinePixel.cso", std::ios_base::in | std::ios_base::binary);
+
+			assert(fin.is_open());
+
+			fin.seekg(0, fin.end);
+			size_t length = fin.tellg();
+			fin.seekg(0, fin.beg);
+
+			DefaultLineRenderer.pixelShaderByteCode = new char[length];
+			DefaultLineRenderer.pixelShaderByteCodeSize = length;
+
+			fin.read(DefaultLineRenderer.pixelShaderByteCode, length);
+
+			fin.close();
+
+			fin.open("../x64/Debug/DebugLineVertex.cso", std::ios_base::in | std::ios_base::binary);
+
+			assert(fin.is_open());
+
+			fin.seekg(0, fin.end);
+			length = fin.tellg();
+			fin.seekg(0, fin.beg);
+
+			DefaultLineRenderer.vertexShaderByteCode = new char[length];
+			DefaultLineRenderer.vertexShaderByteCodeSize = length;
+
+			fin.read(DefaultLineRenderer.vertexShaderByteCode, length);
+
+			fin.close();
+		}
 
 		return true;
 	}
@@ -1132,34 +1245,94 @@ namespace MRenderer
 			// projection
 			m_projection = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_windowWidth / (FLOAT)m_windowHeight, 0.01f, 100.0f);
 
-			m_constantBufferData.vLightDir[0] = { -0.577f, 0.577f, -0.577f, 1.0f };
-			m_constantBufferData.vLightDir[1] = { 10.0f, 0.0f, 0.0f, 1.0f };
-			m_constantBufferData.vLightDir[2] = { 0.1f, 0.0f, -1.0f, 1.0f };
 
-			m_constantBufferData.vLightPosition[0] = { 0.0f, 0.0f, 0.0f, 1.0f };
-			m_constantBufferData.vLightPosition[1] = { -1.0f, 2.5f, -2.0f, 1.0f };
-			m_constantBufferData.vLightPosition[2] = { 4.0f, 2.0f, 0.0f, 1.0f };
+			m_constantBufferData.GlobalAmbient = { 0.2f, 0.2f, 0.2f, 0.2f };
 
-			m_constantBufferData.vLightColor[0] = { 0.5f, 0.5f, 0.5f, 1.0f };
-			m_constantBufferData.vLightColor[1] = { 1.0f, 1.0f, 1.0f, 1.0f };
-			m_constantBufferData.vLightColor[2] = { 0.0f, 1.0f, 0.0f, 1.0f };
+			m_constantBufferData.Material.Ambient = { 1.0f, 1.0f, 1.0f, 1.0f };
+			m_constantBufferData.Material.AmbientFactor = 1.0f;
+			m_constantBufferData.Material.SpecularPower = 3.0f;
 
-			m_constantBufferData.vPointLightRadius = { 1.0f, 1.0f, 1.0f, 1.0f };
+			m_constantBufferData.Material.UseTexture = 1;
 
-			m_constantBufferData.mDiffuseColor.x = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[0];
-			m_constantBufferData.mDiffuseColor.y = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[1];
-			m_constantBufferData.mDiffuseColor.z = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[2];
-			m_constantBufferData.mDiffuseColor.w = DefaultCube.mesh.materials[0][Material::DIFFUSE].factor;
+			m_constantBufferData.Material.Diffuse.x = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[0];
+			m_constantBufferData.Material.Diffuse.y = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[1];
+			m_constantBufferData.Material.Diffuse.z = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[2];
+			m_constantBufferData.Material.Diffuse.w = 1.0f;
 
-			m_constantBufferData.mEmissiveColor.x = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[0];
-			m_constantBufferData.mEmissiveColor.y = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[1];
-			m_constantBufferData.mEmissiveColor.z = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[2];
-			m_constantBufferData.mEmissiveColor.w = DefaultCube.mesh.materials[0][Material::EMISSIVE].factor;
+			m_constantBufferData.Material.DiffuseFactor = DefaultCube.mesh.materials[0][Material::DIFFUSE].factor;
 
-			m_constantBufferData.mSpecularColor.x = DefaultCube.mesh.materials[0][Material::SPECULAR].value[0];
-			m_constantBufferData.mSpecularColor.y = DefaultCube.mesh.materials[0][Material::SPECULAR].value[1];
-			m_constantBufferData.mSpecularColor.z = DefaultCube.mesh.materials[0][Material::SPECULAR].value[2];
-			m_constantBufferData.mSpecularColor.w = DefaultCube.mesh.materials[0][Material::SPECULAR].factor;
+			m_constantBufferData.Material.Emissive.x = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[0];
+			m_constantBufferData.Material.Emissive.y = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[1];
+			m_constantBufferData.Material.Emissive.z = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[2];
+			m_constantBufferData.Material.Emissive.w = 1.0f;
+
+			m_constantBufferData.Material.EmissiveFactor = DefaultCube.mesh.materials[0][Material::EMISSIVE].factor;
+
+			m_constantBufferData.Material.Specular.x = DefaultCube.mesh.materials[0][Material::SPECULAR].value[0];
+			m_constantBufferData.Material.Specular.y = DefaultCube.mesh.materials[0][Material::SPECULAR].value[1];
+			m_constantBufferData.Material.Specular.z = DefaultCube.mesh.materials[0][Material::SPECULAR].value[2];
+			m_constantBufferData.Material.Specular.w = 1.0f;
+
+			m_constantBufferData.Material.SpecularFactor = DefaultCube.mesh.materials[0][Material::SPECULAR].factor;
+
+			for (size_t i = 0; i < MAX_LIGHTS; i++)
+			{
+				m_constantBufferData.Lights[i].Enabled = 0;
+			}
+
+			m_constantBufferData.Lights[0].Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			m_constantBufferData.Lights[0].LightType = ShaderLightType::POINT_LIGHT;
+			m_constantBufferData.Lights[0].Enabled = 1;
+			m_constantBufferData.Lights[0].LightPower = 1.0f;
+
+			m_constantBufferData.Lights[0].ConstantAttenuation = 1.0f;
+			m_constantBufferData.Lights[0].LinearAttenuation = 0.2f;
+			m_constantBufferData.Lights[0].QuadraticAttenuation = 0.1f;
+
+			m_constantBufferData.Lights[0].Position = { -1.0f, 2.5f, 2.0f, 1.0f };
+
+			m_constantBufferData.Lights[1].Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			m_constantBufferData.Lights[1].LightType = ShaderLightType::DIRECTIONAL_LIGHT;
+			m_constantBufferData.Lights[1].Enabled = 1;
+			m_constantBufferData.Lights[1].LightPower = 1.0f;
+										
+			m_constantBufferData.Lights[1].Direction = { 0.0f, -0.5f, 1.0f, 1.0f };
+
+			m_constantBufferData.Lights[2].Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			m_constantBufferData.Lights[2].LightType = ShaderLightType::DIRECTIONAL_LIGHT;
+			m_constantBufferData.Lights[2].Enabled = 1;
+			m_constantBufferData.Lights[2].LightPower = 0.25f;
+										
+			m_constantBufferData.Lights[2].Direction = { 0.0f, -0.5f, -1.0f, 1.0f };
+
+			//m_constantBufferData.vLightDir[0] = { -0.577f, 0.577f, -0.577f, 1.0f };
+			//m_constantBufferData.vLightDir[1] = { 10.0f, 0.0f, 0.0f, 1.0f };
+			//m_constantBufferData.vLightDir[2] = { 0.1f, 0.0f, -1.0f, 1.0f };
+			//
+			//m_constantBufferData.vLightPosition[0] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			//m_constantBufferData.vLightPosition[1] = { -1.0f, 2.5f, -2.0f, 1.0f };
+			//m_constantBufferData.vLightPosition[2] = { 4.0f, 2.0f, 0.0f, 1.0f };
+			//
+			//m_constantBufferData.vLightColor[0] = { 0.5f, 0.5f, 0.5f, 1.0f };
+			//m_constantBufferData.vLightColor[1] = { 1.0f, 1.0f, 1.0f, 1.0f };
+			//m_constantBufferData.vLightColor[2] = { 0.0f, 1.0f, 0.0f, 1.0f };
+			//
+			//m_constantBufferData.vPointLightRadius = { 1.0f, 1.0f, 1.0f, 1.0f };
+			//
+			//m_constantBufferData.mDiffuseColor.x = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[0];
+			//m_constantBufferData.mDiffuseColor.y = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[1];
+			//m_constantBufferData.mDiffuseColor.z = DefaultCube.mesh.materials[0][Material::DIFFUSE].value[2];
+			//m_constantBufferData.mDiffuseColor.w = DefaultCube.mesh.materials[0][Material::DIFFUSE].factor;
+			//
+			//m_constantBufferData.mEmissiveColor.x = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[0];
+			//m_constantBufferData.mEmissiveColor.y = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[1];
+			//m_constantBufferData.mEmissiveColor.z = DefaultCube.mesh.materials[0][Material::EMISSIVE].value[2];
+			//m_constantBufferData.mEmissiveColor.w = DefaultCube.mesh.materials[0][Material::EMISSIVE].factor;
+			//
+			//m_constantBufferData.mSpecularColor.x = DefaultCube.mesh.materials[0][Material::SPECULAR].value[0];
+			//m_constantBufferData.mSpecularColor.y = DefaultCube.mesh.materials[0][Material::SPECULAR].value[1];
+			//m_constantBufferData.mSpecularColor.z = DefaultCube.mesh.materials[0][Material::SPECULAR].value[2];
+			//m_constantBufferData.mSpecularColor.w = DefaultCube.mesh.materials[0][Material::SPECULAR].factor;
 		}
 
 		return true;
@@ -1265,6 +1438,72 @@ namespace MRenderer
 			DefaultCube.vertexBufferView.BufferLocation = DefaultCube.vertexBuffer->GetGPUVirtualAddress();
 			DefaultCube.vertexBufferView.StrideInBytes = sizeof(Vertex);
 			DefaultCube.vertexBufferView.SizeInBytes = vertexBufferSize;
+		}
+
+		// Create the vertex buffer.
+		{
+			const UINT vertexBufferSize = DebugRenderer::get_line_vert_capacity() * sizeof(Vertex);
+
+			//DefaultCube.mesh.vertices.resize(_countof(vertices));
+			//memcpy(DefaultCube.mesh.vertices.data(), vertices, vertexBufferSize);
+
+			// Note: using upload heaps to transfer static data like vert buffers is not 
+			// recommended. Every time the GPU needs it, the upload heap will be marshalled 
+			// over. Please read up on Default Heap usage. An upload heap is used here for 
+			// code simplicity and because there are very few verts to actually transfer.
+			D3D12_HEAP_PROPERTIES heapProperties;
+			heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+			heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProperties.CreationNodeMask = 1;
+			heapProperties.VisibleNodeMask = 1;
+
+			D3D12_RESOURCE_DESC resourceDesc;
+			resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			resourceDesc.Width = vertexBufferSize;
+			resourceDesc.Alignment = 0;
+			resourceDesc.Height = 1;
+			resourceDesc.DepthOrArraySize = 1;
+			resourceDesc.MipLevels = 1;
+			resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+			resourceDesc.SampleDesc.Count = 1;
+			resourceDesc.SampleDesc.Quality = 0;
+			resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+
+
+			HRESULT hr = (m_device->CreateCommittedResource(
+				&heapProperties,
+				D3D12_HEAP_FLAG_NONE,
+				&resourceDesc,
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&DefaultLineRenderer.vertexBuffer)));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the committed resource. \n";
+				exit(hr);
+			}
+
+			// Copy the triangle data to the vertex buffer.
+			//UINT8* pVertexDataBegin;
+			D3D12_RANGE readRange;	// We do not intend to read from this resource on the CPU.
+			readRange.Begin = 0;
+			readRange.End = 0;
+			hr = DefaultLineRenderer.vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_pDebugVertexDataBegin));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to map the vertex buffer. \n";
+				exit(hr);
+			}
+			memcpy(m_pDebugVertexDataBegin, DebugRenderer::get_line_verts(), vertexBufferSize);
+			DefaultLineRenderer.vertexBuffer->Unmap(0, nullptr);
+
+			// Initialize the vertex buffer view.
+			DefaultLineRenderer.vertexBufferView.BufferLocation = DefaultLineRenderer.vertexBuffer->GetGPUVirtualAddress();
+			DefaultLineRenderer.vertexBufferView.StrideInBytes = sizeof(Vertex);
+			DefaultLineRenderer.vertexBufferView.SizeInBytes = vertexBufferSize;
 		}
 
 		return true;
@@ -1666,6 +1905,8 @@ namespace MRenderer
 
 		return true;
 	}
+
+	
 
 	std::string GraphicsApplication::OpenFileName(const wchar_t* filter, HWND owner) 
 	{

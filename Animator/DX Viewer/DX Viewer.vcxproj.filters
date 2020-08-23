@@ -47,12 +47,12 @@
     <ClInclude Include="DirectXTex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="MathTypes.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\pixelShader.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\utility.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\vertexShader.hlsl">
@@ -67,10 +67,19 @@
     <FxCompile Include="Shaders\BlinnPhongVertex.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\DebugLinePixel.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\DebugLineVertex.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="DirectXTex.inl">
       <Filter>Header Files</Filter>
+    </None>
+    <None Include="Shaders\utility.hlsl">
+      <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
 </Project>
