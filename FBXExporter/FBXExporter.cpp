@@ -6,6 +6,7 @@
 #include <fbxsdk.h>
 #include <vector>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 namespace MFBXExporter
@@ -13,11 +14,39 @@ namespace MFBXExporter
 	constexpr int maxPathLength = 260;
 	using namespace DirectX;
 
+	using ulong = unsigned long long;
+
 	struct MoralesVertex
 	{
 		XMFLOAT4 Pos;
 		XMFLOAT4 Normal;
 		XMFLOAT2 Tex;
+	};
+
+	struct MoralesFbxJoint
+	{
+		FbxNode* node;
+		int parentIndex;
+	};
+
+	struct MoralesJoint
+	{
+		float globalTransform[16];
+		int parentIndex;
+	};
+
+	using MoralesPose = std::vector<MoralesJoint>;
+
+	struct MoralesKeyframe
+	{
+		double keytime;
+		MoralesPose poseData;
+	};
+
+	struct MoralesAnimation
+	{
+		double duration;
+		std::vector<MoralesKeyframe> keyframes;
 	};
 
 	struct MoralesMaterial
@@ -45,6 +74,8 @@ namespace MFBXExporter
 		std::vector<int> indicesList;
 		std::vector<MoralesMaterial> materialList;
 		std::vector<std::string> materialPaths;
+		MoralesPose bindPose;
+		MoralesAnimation animation; //TODO: maybe add support for multiple animation loading?
 	};
 
 	void ProcessFbxMesh(FbxNode* Node);
@@ -53,6 +84,7 @@ namespace MFBXExporter
 	void SaveMesh(const char* meshFileName, MoralesMesh& mesh);
 	std::string ReplaceFBXExtension(std::string fileName);
 	bool AreEqual(float a, float b);
+	void ConvertFbxAMatrixToFloat16(float* m, const FbxAMatrix& mat);
 
 	MoralesMesh moralesMesh;
 	int numIndices = 0;
@@ -111,6 +143,8 @@ namespace MFBXExporter
 		ProcessFbxMesh(lScene->GetRootNode());
 
 		ProcessFbxMaterials(lScene);
+
+		ProcessFbxAnimation(lScene);
 
 
 		std::string newFileLocation = ReplaceFBXExtension(SourceFileLocation);
@@ -355,7 +389,7 @@ namespace MFBXExporter
 					std::cout << "\nvertex count AFTER expansion: " << numIndices;
 					std::cout << "\nvertex count AFTER compaction: " << moralesMesh.vertexList.size();
 					std::cout << "\nSize reduction: " << ((numVertices - moralesMesh.vertexList.size()) / (float)numVertices) * 100.00f << "%";
-					std::cout << "\nor " << (moralesMesh.vertexList.size() / (float)numVertices) << " of the expanded size\n";
+					std::cout << "\nor " << (moralesMesh.vertexList.size() / (float)numVertices) << " of the expanded size\n\n";
 				}
 				else
 				{
@@ -511,6 +545,154 @@ namespace MFBXExporter
 		}
 	}
 
+
+	void ProcessFbxAnimation(FbxScene* Scene)
+	{
+		std::vector<MoralesFbxJoint> joints;
+		// Find the first FbxPose that is a bind pose, assume that the first pose is the only pose of interest.
+		int poseCount = Scene->GetPoseCount();
+		for (int i = 0; i < poseCount; i++)
+		{
+			FbxPose* pose = Scene->GetPose(i);
+
+			if (pose->IsBindPose())
+			{
+				// from the bind pose, find the root of the skeleton
+				int nodeCount = pose->GetCount();
+				for (int j = 0; j < nodeCount; j++)
+				{
+					FbxNode* node = pose->GetNode(j);
+					FbxSkeleton* skeleton = node->GetSkeleton();
+					if (skeleton != NULL && skeleton->IsSkeletonRoot())
+					{
+						// Starting with the skeleton root, build a dynamic array of FbxNode* paired with parent indices
+						joints.push_back({ node, -1 });
+						break;
+					}
+				}
+			}
+		}
+
+		// build the dynarray
+		for (int i = 0; i < joints.size(); ++i)
+		{
+			FbxNode* currentNode = joints[i].node;
+			int childCount = currentNode->GetChildCount();
+
+			for (int j = 0; j < childCount; j++)
+			{
+				FbxNode* childNode = currentNode->GetChild(j);
+				if (childNode->GetNodeAttribute() && childNode->GetNodeAttribute()->GetAttributeType() && childNode->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eSkeleton)
+				{
+					joints.push_back({ childNode, i});
+				}
+			}
+		}
+
+
+
+		// Now we have an array of FbxNode* with their parents. Evaluate the global transforms
+		for (size_t i = 0; i < joints.size(); i++)
+		{
+			MoralesJoint mjoint;
+			mjoint.parentIndex = joints[i].parentIndex;
+			FbxAMatrix mat = joints[i].node->EvaluateGlobalTransform();
+			mjoint.globalTransform[0] = mat.mData[0][0];
+			mjoint.globalTransform[1] = mat.mData[0][1];
+			mjoint.globalTransform[2] = mat.mData[0][2];
+			mjoint.globalTransform[3] = mat.mData[0][3];
+
+			mjoint.globalTransform[4] = mat.mData[1][0];
+			mjoint.globalTransform[5] = mat.mData[1][1];
+			mjoint.globalTransform[6] = mat.mData[1][2];
+			mjoint.globalTransform[7] = mat.mData[1][3];
+		
+			mjoint.globalTransform[8]  = mat.mData[2][0];
+			mjoint.globalTransform[9]  = mat.mData[2][1];
+			mjoint.globalTransform[10] = mat.mData[2][2];
+			mjoint.globalTransform[11] = mat.mData[2][3];
+
+			mjoint.globalTransform[12] = mat.mData[3][0];
+			mjoint.globalTransform[13] = mat.mData[3][1];
+			mjoint.globalTransform[14] = mat.mData[3][2];
+			mjoint.globalTransform[15] = mat.mData[3][3];
+			moralesMesh.bindPose.push_back(mjoint);
+		}
+
+		std::cout << "Bind pose loaded, " << moralesMesh.bindPose.size() << " joints\n\n";
+		std::cout << "Loading animation data...\n";
+
+		// bind pose completed (hopefully)
+		// Get the animation data
+
+		// From the scene, get the animation stack
+
+		FbxAnimStack* aStack = Scene->GetCurrentAnimationStack();
+
+		// Get the duration of the animation
+
+		FbxTimeSpan timeSpan = aStack->GetLocalTimeSpan();
+		FbxTime time = timeSpan.GetDuration();
+
+		ulong animationFrames = time.GetFrameCount(FbxTime::eFrames24);
+
+		MoralesAnimation animation;
+		animation.duration = time.GetSecondDouble();
+
+		std::cout << "Animation duration: " << animation.duration << " seconds\n";
+		std::cout << "Animation frame count: " << animationFrames << " frames\n";
+
+		for (ulong i = 0; i < animationFrames; i++)
+		{
+			MoralesKeyframe kf;
+
+			time.SetFrame(i, FbxTime::eFrames24);
+			kf.keytime = time.GetSecondDouble();
+			// Still on step 8
+
+			for (int j = 0; j < joints.size(); j++)
+			{
+				MoralesJoint mjoint;
+				mjoint.parentIndex = joints[j].parentIndex;
+				FbxAMatrix mat = joints[j].node->EvaluateGlobalTransform(time);
+
+				ConvertFbxAMatrixToFloat16(mjoint.globalTransform, mat);
+
+				kf.poseData.push_back(mjoint);
+			}
+
+			moralesMesh.animation.keyframes.push_back(kf);
+		}
+
+		std::cout << "Loaded Animation\n\n";
+
+		// TODO: Get animation (skin?) weights
+
+	}
+
+	void ConvertFbxAMatrixToFloat16(float* m, const FbxAMatrix& mat)
+	{
+		m[0] = mat.mData[0][0];
+		m[1] = mat.mData[0][1];
+		m[2] = mat.mData[0][2];
+		m[3] = mat.mData[0][3];
+
+		m[4] = mat.mData[1][0];
+		m[5] = mat.mData[1][1];
+		m[6] = mat.mData[1][2];
+		m[7] = mat.mData[1][3];
+
+		m[8] = mat.mData[2][0];
+		m[9] = mat.mData[2][1];
+		m[10] = mat.mData[2][2];
+		m[11] = mat.mData[2][3];
+
+		m[12] = mat.mData[3][0];
+		m[13] = mat.mData[3][1];
+		m[14] = mat.mData[3][2];
+		m[15] = mat.mData[3][3];
+	}
+
 	void SaveMesh(const char* meshFileName, MoralesMesh& mesh)
 	{
 		std::ofstream file(meshFileName, std::ios::trunc | std::ios::binary | std::ios::out);
@@ -521,13 +703,18 @@ namespace MFBXExporter
 		uint32_t vert_count = (uint32_t)mesh.vertexList.size();
 		uint32_t mat_count = (uint32_t)mesh.materialList.size();
 		uint32_t matp_count = (uint32_t)mesh.materialPaths.size();
+		uint32_t bindpose_joint_count = (uint32_t)mesh.bindPose.size();
+		uint32_t frame_count = (uint32_t)mesh.animation.keyframes.size();
 
 		file.write((const char*)&index_count, sizeof(uint32_t));
 		file.write((const char*)mesh.indicesList.data(), sizeof(uint32_t) * index_count);
+
 		file.write((const char*)&vert_count, sizeof(uint32_t));
 		file.write((const char*)mesh.vertexList.data(), sizeof(MoralesVertex) * vert_count);
+
 		file.write((const char*)&mat_count, sizeof(uint32_t));
 		file.write((const char*)mesh.materialList.data(), sizeof(MoralesMaterial) * mat_count);
+
 		file.write((const char*)&matp_count, sizeof(uint32_t));
 		// loop material pathes
 		for (size_t i = 0; i < matp_count; i++)
@@ -535,6 +722,21 @@ namespace MFBXExporter
 			uint32_t string_size = mesh.materialPaths[i].size();
 			file.write((const char*)&string_size, sizeof(uint32_t));
 			file.write(mesh.materialPaths[i].c_str(), sizeof(char) * string_size);
+		}
+
+		file.write((const char*)&bindpose_joint_count, sizeof(uint32_t));
+		file.write((const char*)mesh.bindPose.data(), sizeof(MoralesJoint) * bindpose_joint_count);
+
+		file.write((const char*)&mesh.animation.duration, sizeof(double));
+
+		uint32_t joint_count = mesh.animation.keyframes[0].poseData.size();
+		file.write((const char*)&joint_count, sizeof(uint32_t));
+		file.write((const char*)&frame_count, sizeof(uint32_t));
+		// loop keyframes
+		for (size_t i = 0; i < frame_count; i++)
+		{
+			file.write((const char*)&mesh.animation.keyframes[i].keytime, sizeof(double));
+			file.write((const char*)mesh.animation.keyframes[i].poseData.data(), sizeof(MoralesJoint) * joint_count);
 		}
 
 		file.close();
