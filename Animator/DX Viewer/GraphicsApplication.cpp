@@ -204,6 +204,22 @@ namespace MRenderer
 		timer.Signal();
 		static float speed = 1.5f;
 
+
+		static double FPSTimer = 0.0;
+		static int FPSTimerCount = 0;
+		FPSTimerCount++;
+		FPSTimer += timer.Delta();
+		if (FPSTimer > 1.0)
+		{
+			FPSTimer -= 1.0;
+			// ClearScreenFunctionIsNotInStdAndIDontWantToWriteAWindowsConsoleAPIFunctionAtTheMomentSoIWont();
+			std::cout << FPSTimerCount << " FPS\n";
+			FPSTimerCount = 0;
+		}
+
+
+
+
 		XMFLOAT4 lightPos = m_constantBufferData.Lights[0].Position;
 
 		// Check for input
@@ -385,7 +401,7 @@ namespace MRenderer
 
 			for (int i = 0; i < DefaultLineRenderer.animation.bindPose.size(); i++)
 			{
-				transform = XMLoadFloat4x4(&DefaultLineRenderer.animation.bindPose[i].transform);
+				transform = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[frame].poseData[i].transform);
 				Location = transform.r[3];
 				//transform = XMMatrixTranspose(transform);
 
@@ -406,12 +422,12 @@ namespace MRenderer
 
 				DebugRenderer::add_line(position, scaledDown, Color::Blue);
 
-				if (DefaultLineRenderer.animation.bindPose[i].parentIndex > -1)
+				if (DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex > -1)
 				{
-					float p_x = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][0];
-					float p_y = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][1];
-					float p_z = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][2];
-					float p_w = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][3];
+					float p_x = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][0];
+					float p_y = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][1];
+					float p_z = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][2];
+					float p_w = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][3];
 					DebugRenderer::add_line({ position.x, position.y, position.z, position.w }, { p_x, p_y, p_z, p_w }, Color::White);
 				}
 			}
@@ -437,20 +453,30 @@ namespace MRenderer
 			}
 
 			// get the 0 to 1 ratio for the two frames.
+			int useThisFrame = frame;
 			int previousFrame = frame - 1;
 			double delta;
 			double t = DefaultLineRenderer.animation.currentTime;
 			double t2 = DefaultLineRenderer.animation.keyframes[frame].keytime;
 			if (previousFrame < 0)
 			{
+				useThisFrame = frame + 1;
 				previousFrame += DefaultLineRenderer.animation.keyframes.size();
 				double t1 = DefaultLineRenderer.animation.keyframes[previousFrame].keytime;
-				t2 = DefaultLineRenderer.animation.duration + DefaultLineRenderer.animation.keyframes[frame].keytime;
+				t2 = DefaultLineRenderer.animation.duration + DefaultLineRenderer.animation.keyframes[useThisFrame].keytime;
+				delta = ((t + DefaultLineRenderer.animation.duration) - t1) / (t2 - t1);//r = (t-t1) / (t2-t1)
+			}
+			else if (previousFrame > 0)
+			{
+				double t1 = DefaultLineRenderer.animation.keyframes[previousFrame].keytime;
 				delta = (t - t1) / (t2 - t1);//r = (t-t1) / (t2-t1)
+				useThisFrame = frame;
 			}
 			else
 			{
-				double t1 = DefaultLineRenderer.animation.keyframes[previousFrame].keytime;
+				previousFrame = DefaultLineRenderer.animation.keyframes.size() - 1;
+				double t1 = 0.0;
+				t2 = DefaultLineRenderer.animation.duration + DefaultLineRenderer.animation.keyframes[useThisFrame].keytime;
 				delta = (t - t1) / (t2 - t1);//r = (t-t1) / (t2-t1)
 			}
 
@@ -472,10 +498,10 @@ namespace MRenderer
 			XMVECTOR quatB;
 			float lineLength = 0.25f;
 
-			for (int i = 0; i < DefaultLineRenderer.animation.keyframes[frame].poseData.size(); i++)
+			for (int i = 0; i < DefaultLineRenderer.animation.keyframes[useThisFrame].poseData.size(); i++)
 			{
 				transformA = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[previousFrame].poseData[i].transform);
-				transformB = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[frame].poseData[i].transform);
+				transformB = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[useThisFrame].poseData[i].transform);
 				//transform = XMMatrixTranspose(transform);
 
 				XMStoreFloat4(&positionA, transformA.r[3]);
