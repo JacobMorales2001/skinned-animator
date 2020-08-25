@@ -10,7 +10,9 @@ VS_Output main( AppData input )
 {
     VS_Output output;
     
-    output.position = mul(input.Position, WorldViewProjectionMatrix);
+    output.position = input.Position + input.InstancePos;
+    
+    output.position = mul(output.position, WorldViewProjectionMatrix);
     
     output.color = input.Color;
     

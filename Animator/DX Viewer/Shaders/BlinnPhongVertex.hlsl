@@ -3,8 +3,10 @@
 VertexShaderOutput main(AppData IN) //Simple vertex shader
 {
     VertexShaderOutput OUT;
+    
+    OUT.Position = IN.Position + IN.InstancePos;
  
-    OUT.Position = mul(IN.Position, WorldViewProjectionMatrix);
+    OUT.Position = mul(OUT.Position, WorldViewProjectionMatrix);
     OUT.PositionWS = mul(IN.Position, WorldMatrix);
     OUT.NormalWS = mul(IN.Normal, InverseTransposeWorldMatrix).xyz;
     OUT.TexCoord = IN.TexCoord;

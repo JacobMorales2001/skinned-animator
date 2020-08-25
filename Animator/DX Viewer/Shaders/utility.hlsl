@@ -78,6 +78,7 @@ struct AppData
     float4 Normal : NORMAL;
     float4 Color : COLOR;
     float2 TexCoord : TEXCOORD;
+    float4 InstancePos : INSTANCEPOS;
 };
 
 struct VertexShaderOutput

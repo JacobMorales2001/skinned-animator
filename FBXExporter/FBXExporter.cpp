@@ -85,6 +85,7 @@ namespace MFBXExporter
 	std::string ReplaceFBXExtension(std::string fileName);
 	bool AreEqual(float a, float b);
 	void ConvertFbxAMatrixToFloat16(float* m, const FbxAMatrix& mat);
+	std::string OpenFileName(const wchar_t* filter, HWND owner);
 
 	MoralesMesh moralesMesh;
 	int numIndices = 0;
@@ -96,18 +97,20 @@ namespace MFBXExporter
 		freopen("CONOUT$", "w", stdout);
 		freopen("CONOUT$", "w", stderr);
 
-		if (argc != 2)
-		{
-			std::cout << "Invalid arguments.\n";
-			std::cout << "First argument must be source file with extension EX: \"Assets/MyFBXFile.fbx\".\n";
-			std::cout << "exiting.\n";
-			std::cin.get();
-			exit(-1);
-		}
+		//if (argc != 2)
+		//{
+		//	std::cout << "Invalid arguments.\n";
+		//	std::cout << "First argument must be source file with extension EX: \"Assets/MyFBXFile.fbx\".\n";
+		//	std::cout << "exiting.\n";
+		//	std::cin.get();
+		//	exit(-1);
+		//}
 
-		std::cout << "File to read: " << argv[1] << '\n';
+		std::string fn = OpenFileName(L"Autodesk .fbx Files (*.fbx)\0*.fbx*\0", NULL);
 
-		std::string SourceFileLocation = argv[1];
+		std::cout << "File to read: " << fn << '\n';
+
+		std::string SourceFileLocation = fn;
 
 		std::string fbx = ".fbx";
 		std::string mesh = ".mbm"; // Morales Binary Mesh
@@ -636,10 +639,9 @@ namespace MFBXExporter
 
 		ulong animationFrames = time.GetFrameCount(FbxTime::eFrames24);
 
-		MoralesAnimation animation;
-		animation.duration = time.GetSecondDouble();
+		moralesMesh.animation.duration = time.GetSecondDouble();
 
-		std::cout << "Animation duration: " << animation.duration << " seconds\n";
+		std::cout << "Animation duration: " << moralesMesh.animation.duration << " seconds\n";
 		std::cout << "Animation frame count: " << animationFrames << " frames\n";
 
 		for (ulong i = 0; i < animationFrames; i++)
@@ -753,6 +755,27 @@ namespace MFBXExporter
 	bool AreEqual(float a, float b)
 	{
 		return fabs(a - b) <= std::numeric_limits<float>::epsilon();
+	}
+
+	std::string OpenFileName(const wchar_t* filter, HWND owner)
+	{
+		OPENFILENAME ofn;
+		wchar_t fileName[MAX_PATH] = L"";
+		ZeroMemory(&ofn, sizeof(ofn));
+		ofn.lStructSize = sizeof(OPENFILENAME);
+		ofn.hwndOwner = owner;
+		ofn.lpstrFilter = filter;
+		ofn.lpstrFile = fileName;
+		ofn.nMaxFile = MAX_PATH;
+		ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+		ofn.lpstrDefExt = L"";
+		std::wstring fileNameStr;
+		if (GetOpenFileName(&ofn))
+			fileNameStr = fileName;
+
+		std::string returnString = std::string(fileNameStr.begin(), fileNameStr.end());
+
+		return returnString;
 	}
 }
 

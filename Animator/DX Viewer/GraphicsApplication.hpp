@@ -89,6 +89,12 @@ namespace MRenderer
 			std::vector<int> indices;
 		};
 
+		struct InputJoint
+		{
+			float transform[16];
+			int parentIndex;
+		};
+
 		struct ShaderLight
 		{
 			XMFLOAT4 Position; // 16 bytes
@@ -162,7 +168,34 @@ namespace MRenderer
 
 		struct InstanceData
 		{
-			XMFLOAT3 position;
+			XMFLOAT4 position;
+		};
+
+		struct Joint
+		{
+			XMFLOAT4X4 transform;
+			int parentIndex;
+		};
+
+		using Pose = vector<Joint>;
+
+		struct Keyframe
+		{
+			double keytime;
+			Pose poseData;
+		};
+
+		struct RenderObject;
+
+		struct Animation
+		{
+			bool enabled = true;
+			RenderObject* renderObject;
+			double duration;
+			double currentTime = 0.0;
+			vector<Keyframe> keyframes;
+			Pose bindPose;
+
 		};
 
 		struct RenderObject
@@ -188,6 +221,8 @@ namespace MRenderer
 
 			D3D12_PRIMITIVE_TOPOLOGY		PrimitiveTopology;
 
+			Animation animation;
+
 		};
 	public:
 
@@ -211,7 +246,7 @@ namespace MRenderer
 		void WaitForPreviousFrame();
 		void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 		void PopulateCommandList();
-		void LoadMesh(Mesh& mesh);
+		void LoadMesh(Mesh& mesh, Animation& animation);
 
 		bool CreateDevice();
 		bool CreateCommandQueue();
@@ -261,7 +296,7 @@ namespace MRenderer
 		ComPtr<ID3D12Resource>				textureUploadHeap2;
 
 		// Pipeline objects.
-		float								m_clearColor[4] = {0.5f, 0.5f, 0.5f, 1.0f};
+		float								m_clearColor[4] = {0.25f, 0.25f, 0.25f, 1.0f};
 		D3D12_VIEWPORT                      m_viewport;
 		D3D12_RECT                          m_scissorRect;
 		ComPtr<IDXGISwapChain3>             m_swapChain;

@@ -111,7 +111,9 @@ namespace MRenderer
 	{
 		// Load Assets
 		
-		LoadMesh(DefaultCube.mesh);
+		LoadMesh(DefaultCube.mesh, DefaultCube.animation);
+
+		DefaultLineRenderer.animation = DefaultCube.animation;
 
 		CreateRootSignature();
 
@@ -348,6 +350,176 @@ namespace MRenderer
 			DebugRenderer::add_line({ i, 0.0f, -10.0f, 1.0f }, { i, 0.0f, 10.0f, 1.0f }, my_color);
 		}
 
+		static int frame = 0;
+		if ((GetAsyncKeyState(SHORT('B')) & 0x1))
+		{
+			frame--;
+			if (frame < 0)
+			{
+				frame = DefaultLineRenderer.animation.keyframes.size() - 1;
+			}
+		}
+		if ((GetAsyncKeyState(SHORT('N')) & 0x1))
+		{
+			frame++;
+			if (frame > DefaultLineRenderer.animation.keyframes.size() - 1)
+			{
+				frame = 0;
+			}
+		}
+		if ((GetAsyncKeyState(SHORT('V')) & 0x1))
+		{
+			DefaultLineRenderer.animation.enabled = !DefaultLineRenderer.animation.enabled;
+		}
+
+		if (!DefaultLineRenderer.animation.enabled) // not animating
+		{
+			XMVECTOR Location;
+			XMFLOAT4 position;
+			XMFLOAT4 xOffset;
+			XMFLOAT4 yOffset;
+			XMFLOAT4 zOffset;
+			XMFLOAT4 scaledDown;
+			XMMATRIX transform;
+			float lineLength = 0.25f;
+
+			for (int i = 0; i < DefaultLineRenderer.animation.bindPose.size(); i++)
+			{
+				transform = XMLoadFloat4x4(&DefaultLineRenderer.animation.bindPose[i].transform);
+				Location = transform.r[3];
+				//transform = XMMatrixTranspose(transform);
+
+				XMStoreFloat4(&position, Location);
+				XMStoreFloat4(&xOffset, transform.r[0]);
+				XMStoreFloat4(&yOffset, transform.r[1]);
+				XMStoreFloat4(&zOffset, transform.r[2]);
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(xOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Red);
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(yOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Green);
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(zOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Blue);
+
+				if (DefaultLineRenderer.animation.bindPose[i].parentIndex > -1)
+				{
+					float p_x = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][0];
+					float p_y = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][1];
+					float p_z = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][2];
+					float p_w = DefaultLineRenderer.animation.bindPose[DefaultLineRenderer.animation.bindPose[i].parentIndex].transform.m[3][3];
+					DebugRenderer::add_line({ position.x, position.y, position.z, position.w }, { p_x, p_y, p_z, p_w }, Color::White);
+				}
+			}
+
+		}
+		else // animating
+		{
+			// find a key start
+			DefaultLineRenderer.animation.currentTime += timer.Delta();
+			//std::cout << "Time : " << DefaultLineRenderer.animation.currentTime << "\nOutO : " << DefaultLineRenderer.animation.duration << '\n';
+			if (DefaultLineRenderer.animation.currentTime > DefaultLineRenderer.animation.duration)
+			{
+				DefaultLineRenderer.animation.currentTime -= DefaultLineRenderer.animation.duration;
+			}
+
+			for (int i = 0; i < DefaultLineRenderer.animation.keyframes.size(); i++)
+			{
+				if (DefaultLineRenderer.animation.keyframes[i].keytime > DefaultLineRenderer.animation.currentTime)
+				{
+					frame = i;
+					break;
+				}
+			}
+
+			// get the 0 to 1 ratio for the two frames.
+			int previousFrame = frame - 1;
+			double delta;
+			double t = DefaultLineRenderer.animation.currentTime;
+			double t2 = DefaultLineRenderer.animation.keyframes[frame].keytime;
+			if (previousFrame < 0)
+			{
+				previousFrame += DefaultLineRenderer.animation.keyframes.size();
+				double t1 = DefaultLineRenderer.animation.keyframes[previousFrame].keytime;
+				t2 = DefaultLineRenderer.animation.duration + DefaultLineRenderer.animation.keyframes[frame].keytime;
+				delta = (t - t1) / (t2 - t1);//r = (t-t1) / (t2-t1)
+			}
+			else
+			{
+				double t1 = DefaultLineRenderer.animation.keyframes[previousFrame].keytime;
+				delta = (t - t1) / (t2 - t1);//r = (t-t1) / (t2-t1)
+			}
+
+			// now interpolate the frames.
+			//std::cout << delta << '\n';
+
+
+			XMFLOAT4 positionA;
+			XMFLOAT4 positionB;
+			XMFLOAT4 position;
+			XMFLOAT4 xOffset;
+			XMFLOAT4 yOffset;
+			XMFLOAT4 zOffset;
+			XMFLOAT4 scaledDown;
+			XMMATRIX transformA;
+			XMMATRIX transformB;
+			XMMATRIX transform;
+			XMVECTOR quatA;
+			XMVECTOR quatB;
+			float lineLength = 0.25f;
+
+			for (int i = 0; i < DefaultLineRenderer.animation.keyframes[frame].poseData.size(); i++)
+			{
+				transformA = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[previousFrame].poseData[i].transform);
+				transformB = XMLoadFloat4x4(&DefaultLineRenderer.animation.keyframes[frame].poseData[i].transform);
+				//transform = XMMatrixTranspose(transform);
+
+				XMStoreFloat4(&positionA, transformA.r[3]);
+				XMStoreFloat4(&positionB, transformB.r[3]);
+
+				position = Float4Lerp(positionA, positionB, delta);
+
+				quatA = XMQuaternionRotationMatrix(transformA);
+				quatB = XMQuaternionRotationMatrix(transformB);
+
+				quatA = XMQuaternionSlerp(quatA, quatB, delta);
+
+				transform = XMMatrixRotationQuaternion(quatA);
+
+				XMStoreFloat4(&xOffset, transform.r[0]);
+				xOffset.w = 0.0f;
+				XMStoreFloat4(&yOffset, transform.r[1]);
+				yOffset.w = 0.0f;
+				XMStoreFloat4(&zOffset, transform.r[2]);
+				zOffset.w = 0.0f;
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(xOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Red);
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(yOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Green);
+
+				scaledDown = Float4Add(position, Float4MultiplyFloat(zOffset, lineLength));
+
+				DebugRenderer::add_line(position, scaledDown, Color::Blue);
+
+				if (DefaultLineRenderer.animation.bindPose[i].parentIndex > -1)
+				{
+					float p_x = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][0];
+					float p_y = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][1];
+					float p_z = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][2];
+					float p_w = DefaultLineRenderer.animation.keyframes[frame].poseData[DefaultLineRenderer.animation.keyframes[frame].poseData[i].parentIndex].transform.m[3][3];
+					DebugRenderer::add_line({ position.x, position.y, position.z, position.w }, { p_x, p_y, p_z, p_w }, Color::White);
+				}
+			}
+		}
+
 		D3D12_RANGE readRange;	// We do not intend to read from this resource on the CPU.
 		readRange.Begin = 0;
 		readRange.End = 0;
@@ -445,13 +617,16 @@ namespace MRenderer
 		m_commandList->IASetPrimitiveTopology(RenderObjects[0]->PrimitiveTopology);
 		m_commandList->SetPipelineState(RenderObjects[0]->pipelineState.Get());
 		m_commandList->IASetVertexBuffers(0, 1, &RenderObjects[0]->vertexBufferView);
+		m_commandList->IASetVertexBuffers(1, 1, &RenderObjects[0]->instanceBufferView);
 		m_commandList->IASetIndexBuffer(&RenderObjects[0]->indexBufferView);
+		
 		m_commandList->DrawIndexedInstanced(RenderObjects[0]->mesh.indices.size(), 1, 0, 0, 0);
 
 
 		m_commandList->IASetPrimitiveTopology(DefaultLineRenderer.PrimitiveTopology);
 		m_commandList->SetPipelineState(DefaultLineRenderer.pipelineState.Get());
 		m_commandList->IASetVertexBuffers(0, 1, &DefaultLineRenderer.vertexBufferView);
+		m_commandList->IASetVertexBuffers(1, 1, &DefaultLineRenderer.instanceBufferView);
 		m_commandList->DrawInstanced(DebugRenderer::get_line_vert_count(), 1, 0, 0);
 
 		// Indicate that the back buffer will now be used to present.
@@ -497,7 +672,7 @@ namespace MRenderer
 		m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	}
 
-	void GraphicsApplication::LoadMesh(GraphicsApplication::Mesh& mesh)
+	void GraphicsApplication::LoadMesh(GraphicsApplication::Mesh& mesh, GraphicsApplication::Animation& animation)
 	{
 		GraphicsApplication::InputMesh inputMesh;
 		std::string meshFileName;
@@ -515,6 +690,9 @@ namespace MRenderer
 		uint32_t player_vertex_count;
 		uint32_t player_material_count;
 		uint32_t player_material_path_count;
+		uint32_t bindpose_joint_count;
+		uint32_t joint_count;
+		uint32_t frame_count;
 
 		// Read the index count and all the indices.
 
@@ -557,6 +735,78 @@ namespace MRenderer
 			mesh.materialPaths[i] = std::string(buffer);
 			delete[] buffer;
 
+		}
+
+		// Read the animation data
+		file.read((char*)&bindpose_joint_count, sizeof(uint32_t));
+		animation.bindPose.resize(bindpose_joint_count);
+		vector<InputJoint> input_joints;
+		input_joints.resize(bindpose_joint_count);
+		file.read((char*)input_joints.data(), sizeof(Joint) * bindpose_joint_count);
+
+		for (int i = 0; i < input_joints.size(); i++)
+		{
+			animation.bindPose[i].parentIndex = input_joints[i].parentIndex;
+
+			animation.bindPose[i].transform.m[0][0] = input_joints[i].transform[0];
+			animation.bindPose[i].transform.m[0][1] = input_joints[i].transform[1];
+			animation.bindPose[i].transform.m[0][2] = input_joints[i].transform[2];
+			animation.bindPose[i].transform.m[0][3] = input_joints[i].transform[3];
+
+			animation.bindPose[i].transform.m[1][0] = input_joints[i].transform[4];
+			animation.bindPose[i].transform.m[1][1] = input_joints[i].transform[5];
+			animation.bindPose[i].transform.m[1][2] = input_joints[i].transform[6];
+			animation.bindPose[i].transform.m[1][3] = input_joints[i].transform[7];
+
+			animation.bindPose[i].transform.m[2][0] = input_joints[i].transform[8];
+			animation.bindPose[i].transform.m[2][1] = input_joints[i].transform[9];
+			animation.bindPose[i].transform.m[2][2] = input_joints[i].transform[10];
+			animation.bindPose[i].transform.m[2][3] = input_joints[i].transform[11];
+
+			animation.bindPose[i].transform.m[3][0] = input_joints[i].transform[12];
+			animation.bindPose[i].transform.m[3][1] = input_joints[i].transform[13];
+			animation.bindPose[i].transform.m[3][2] = input_joints[i].transform[14];
+			animation.bindPose[i].transform.m[3][3] = input_joints[i].transform[15];
+		}
+
+		file.read((char*)&animation.duration, sizeof(double));
+
+		file.read((char*)&joint_count, sizeof(uint32_t));
+		file.read((char*)&frame_count, sizeof(uint32_t));
+
+		animation.keyframes.resize(frame_count);
+		for (uint32_t i = 0; i < frame_count; i++)
+		{
+			file.read((char*)&animation.keyframes[i].keytime, sizeof(double));
+			animation.keyframes[i].poseData.resize(joint_count);
+			input_joints.clear();
+			input_joints.resize(joint_count);
+			file.read((char*)input_joints.data(), sizeof(Joint) * joint_count);
+
+			for (int j = 0; j < input_joints.size(); j++)
+			{
+				animation.keyframes[i].poseData[j].parentIndex = input_joints[j].parentIndex;
+						  
+				animation.keyframes[i].poseData[j].transform.m[0][0] = input_joints[j].transform[0];
+				animation.keyframes[i].poseData[j].transform.m[0][1] = input_joints[j].transform[1];
+				animation.keyframes[i].poseData[j].transform.m[0][2] = input_joints[j].transform[2];
+				animation.keyframes[i].poseData[j].transform.m[0][3] = input_joints[j].transform[3];
+						  															
+				animation.keyframes[i].poseData[j].transform.m[1][0] = input_joints[j].transform[4];
+				animation.keyframes[i].poseData[j].transform.m[1][1] = input_joints[j].transform[5];
+				animation.keyframes[i].poseData[j].transform.m[1][2] = input_joints[j].transform[6];
+				animation.keyframes[i].poseData[j].transform.m[1][3] = input_joints[j].transform[7];
+						  															
+				animation.keyframes[i].poseData[j].transform.m[2][0] = input_joints[j].transform[8];
+				animation.keyframes[i].poseData[j].transform.m[2][1] = input_joints[j].transform[9];
+				animation.keyframes[i].poseData[j].transform.m[2][2] = input_joints[j].transform[10];
+				animation.keyframes[i].poseData[j].transform.m[2][3] = input_joints[j].transform[11];
+						  															
+				animation.keyframes[i].poseData[j].transform.m[3][0] = input_joints[j].transform[12];
+				animation.keyframes[i].poseData[j].transform.m[3][1] = input_joints[j].transform[13];
+				animation.keyframes[i].poseData[j].transform.m[3][2] = input_joints[j].transform[14];
+				animation.keyframes[i].poseData[j].transform.m[3][3] = input_joints[j].transform[15];
+			}
 		}
 
 		file.close();
@@ -893,6 +1143,7 @@ namespace MRenderer
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "INSTANCEPOS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0},
 			};
 
 			// Describe and create the graphics pipeline state object (PSO).
@@ -962,6 +1213,8 @@ namespace MRenderer
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "INSTANCEPOS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0},
+
 			};
 
 			// Describe and create the graphics pipeline state object (PSO).
@@ -1597,45 +1850,76 @@ namespace MRenderer
 
 	bool GraphicsApplication::CreateInstanceBuffers()
 	{
-		//// Create the instance buffer
-		//{
-		//	InstanceData instances[] =
-		//	{
-		//		XMFLOAT3(0.0f, 0.0f, 0.0f),
-		//		XMFLOAT3(0.0f, -0.5f, 0.0f),
-		//		XMFLOAT3(4.0f, 0.0f, 0.0f)
-		//	};
+		// Create the instance buffer
+		{
+			InstanceData instances[1];
+			instances[0] = { {0.0f, 0.0f, 0.0f, 1.0f} };
 
-		//	UINT instanceBufferSize = sizeof(instances);
+			UINT instanceBufferSize = sizeof(instances);
 
-		//	HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		//		D3D12_HEAP_FLAG_NONE,
-		//		&CD3DX12_RESOURCE_DESC::Buffer(instanceBufferSize),
-		//		D3D12_RESOURCE_STATE_GENERIC_READ,
-		//		nullptr,
-		//		IID_PPV_ARGS(&m_instanceBuffer));
-		//	if (FAILED(hr))
-		//	{
-		//		std::cout << "Failed to create the instance buffer.\n";
-		//		return hr;
-		//	}
+			HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(instanceBufferSize),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&DefaultCube.instanceBuffer));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the instance buffer.\n";
+				return hr;
+			}
 
-		//	UINT8* pInstanceDataBegin;
-		//	hr = m_instanceBuffer->Map(0, &CD3DX12_RANGE(0, 0),
-		//		reinterpret_cast<void**>(&pInstanceDataBegin));
-		//	if (FAILED(hr))
-		//	{
-		//		std::cout << "Failed to map the vertex buffer. \n";
-		//		return E_FAIL;
-		//	}
-		//	memcpy(pInstanceDataBegin, instances, instanceBufferSize);
-		//	m_instanceBuffer->Unmap(0, nullptr);
+			UINT8* pInstanceDataBegin;
+			hr = DefaultCube.instanceBuffer->Map(0, &CD3DX12_RANGE(0, 0),
+				reinterpret_cast<void**>(&pInstanceDataBegin));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to map the vertex buffer. \n";
+				return E_FAIL;
+			}
+			memcpy(pInstanceDataBegin, instances, instanceBufferSize);
+			DefaultCube.instanceBuffer->Unmap(0, nullptr);
 
-		//	// Initialize the vertex buffer view.
-		//	m_instanceBufferView.BufferLocation = m_instanceBuffer->GetGPUVirtualAddress();
-		//	m_instanceBufferView.StrideInBytes = sizeof(InstanceData);
-		//	m_instanceBufferView.SizeInBytes = instanceBufferSize;
-		//}
+			// Initialize the vertex buffer view.
+			DefaultCube.instanceBufferView.BufferLocation = DefaultCube.instanceBuffer->GetGPUVirtualAddress();
+			DefaultCube.instanceBufferView.StrideInBytes = sizeof(InstanceData);
+			DefaultCube.instanceBufferView.SizeInBytes = instanceBufferSize;
+		}
+		// Create the instance buffer
+		{
+			InstanceData instances[1];
+			instances[0] = { {5.0f, 0.0f, 0.0f, 1.0f} };
+
+			UINT instanceBufferSize = sizeof(instances);
+
+			HRESULT hr = m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+				D3D12_HEAP_FLAG_NONE,
+				&CD3DX12_RESOURCE_DESC::Buffer(instanceBufferSize),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&DefaultLineRenderer.instanceBuffer));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to create the instance buffer.\n";
+				return hr;
+			}
+
+			UINT8* pInstanceDataBegin;
+			hr = DefaultLineRenderer.instanceBuffer->Map(0, &CD3DX12_RANGE(0, 0),
+				reinterpret_cast<void**>(&pInstanceDataBegin));
+			if (FAILED(hr))
+			{
+				std::cout << "Failed to map the vertex buffer. \n";
+				return E_FAIL;
+			}
+			memcpy(pInstanceDataBegin, instances, instanceBufferSize);
+			DefaultLineRenderer.instanceBuffer->Unmap(0, nullptr);
+
+			// Initialize the vertex buffer view.
+			DefaultLineRenderer.instanceBufferView.BufferLocation = DefaultLineRenderer.instanceBuffer->GetGPUVirtualAddress();
+			DefaultLineRenderer.instanceBufferView.StrideInBytes = sizeof(InstanceData);
+			DefaultLineRenderer.instanceBufferView.SizeInBytes = instanceBufferSize;
+		}
 
 		return true;
 	}
@@ -1905,8 +2189,6 @@ namespace MRenderer
 
 		return true;
 	}
-
-	
 
 	std::string GraphicsApplication::OpenFileName(const wchar_t* filter, HWND owner) 
 	{
