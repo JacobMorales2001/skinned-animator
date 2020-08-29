@@ -115,6 +115,11 @@ namespace MRenderer
 
 		DefaultLineRenderer.animation = DefaultCube.animation;
 
+		for (int i = 0; i < DefaultLineRenderer.animation.bindPose.size(); i++)
+		{
+			DefaultCube.InverseBind[i] = XMMatrixInverse(nullptr, XMLoadFloat4x4(&DefaultLineRenderer.animation.bindPose[i].transform));
+		}
+
 		CreateRootSignature();
 
 		CreateShaders();
@@ -344,7 +349,7 @@ namespace MRenderer
 
 		m_constantBufferData.InverseTransposeWorldMatrix = XMMatrixTranspose(XMMatrixInverse(nullptr, m_constantBufferData.World));
 		m_constantBufferData.MVP = XMMatrixTranspose(XMMatrixMultiply(XMMatrixMultiply(m_MVP.World, m_MVP.View), m_MVP.Projection));
-		memcpy(m_pCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+		
 
 
 		hue += timer.Delta() * 0.1f;
@@ -516,6 +521,10 @@ namespace MRenderer
 
 				transform = XMMatrixRotationQuaternion(quatA);
 
+				XMMATRIX tweenJoint = XMMatrixMultiply(transform, XMMatrixTranslation(position.x, position.y, position.z));
+
+				m_constantBufferData.JointTransforms[i] = XMMatrixMultiplyTranspose(DefaultCube.InverseBind[i], tweenJoint);
+
 				XMStoreFloat4(&xOffset, transform.r[0]);
 				xOffset.w = 0.0f;
 				XMStoreFloat4(&yOffset, transform.r[1]);
@@ -557,6 +566,7 @@ namespace MRenderer
 		}
 		memcpy(m_pDebugVertexDataBegin, DebugRenderer::get_line_verts(), DebugRenderer::get_line_vert_count() * sizeof(Vertex));
 		DefaultLineRenderer.vertexBuffer->Unmap(0, nullptr);
+		memcpy(m_pCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
 	}
 
 	void GraphicsApplication::Render()
@@ -843,9 +853,8 @@ namespace MRenderer
 		// Example mesh conditioning if needed - this flips handedness
 		for (auto& v : inputMesh.vertices)
 		{
-			v.position.x = -v.position.x;
-			//v.position.y += 0.5f; // TODO: Make this not hardcoded
-			v.normal.x = -v.normal.x;
+			//v.position.x = -v.position.x;
+			//v.normal.x = -v.normal.x;
 			v.tex.y = 1.0f - v.tex.y;
 		}
 
@@ -873,6 +882,13 @@ namespace MRenderer
 			//mesh.vertices[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
 			mesh.vertices[i].tex.x = inputMesh.vertices[i].tex.x;
 			mesh.vertices[i].tex.y = inputMesh.vertices[i].tex.y;
+
+			mesh.vertices[i].joints = inputMesh.vertices[i].joints;
+			mesh.vertices[i].weights.x = inputMesh.vertices[i].weights.x;
+			mesh.vertices[i].weights.y = inputMesh.vertices[i].weights.y;
+			mesh.vertices[i].weights.z = inputMesh.vertices[i].weights.z;
+			mesh.vertices[i].weights.w = inputMesh.vertices[i].weights.w;
+
 		}
 		for (int i = 0; i < inputMesh.indices.size(); i++)
 		{
@@ -1169,6 +1185,9 @@ namespace MRenderer
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "JOINTS", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, 56, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "WEIGHTS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 72, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
 				{ "INSTANCEPOS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0},
 			};
 
@@ -1239,6 +1258,9 @@ namespace MRenderer
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "JOINTS", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, 56, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "WEIGHTS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 72, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
 				{ "INSTANCEPOS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0},
 
 			};
@@ -1367,11 +1389,11 @@ namespace MRenderer
 		return true;
 	}
 
-	bool GraphicsApplication::UpdateBuffers(RenderObject RO)
+	/*bool GraphicsApplication::UpdateBuffers(RenderObject RO)
 	{
 
 		return true;
-	}
+	}*/
 
 	bool GraphicsApplication::CreateShaders()
 	{

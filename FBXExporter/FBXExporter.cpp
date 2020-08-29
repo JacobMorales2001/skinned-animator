@@ -12,6 +12,7 @@
 namespace MFBXExporter
 {
 	constexpr int maxPathLength = 260;
+	constexpr int MAX_INFLUENCES = 4;
 	using namespace DirectX;
 
 	using ulong = unsigned long long;
@@ -21,6 +22,8 @@ namespace MFBXExporter
 		XMFLOAT4 Pos;
 		XMFLOAT4 Normal;
 		XMFLOAT2 Tex;
+		XMINT4 Joints;
+		struct Double4 { double x, y, z, w; } Weights;
 	};
 
 	struct MoralesFbxJoint
@@ -78,6 +81,24 @@ namespace MFBXExporter
 		MoralesAnimation animation; //TODO: maybe add support for multiple animation loading?
 	};
 
+	struct MoralesInfluence
+	{
+		int joint; 
+		float weight;
+	};
+
+	struct MoralesInfluenceSet
+	{
+		MoralesInfluence infs[4];
+	};
+
+
+	std::vector<MoralesInfluenceSet> controlPointInfluences;
+
+	//using MoralesInfluenceSet = std::array<MoralesInfluence, 4>;
+
+
+
 	void ProcessFbxMesh(FbxNode* Node);
 	void ProcessFbxMaterials(FbxScene* Scene);
 	void ProcessFbxAnimation(FbxScene* Scene);
@@ -86,9 +107,12 @@ namespace MFBXExporter
 	bool AreEqual(float a, float b);
 	void ConvertFbxAMatrixToFloat16(float* m, const FbxAMatrix& mat);
 	std::string OpenFileName(const wchar_t* filter, HWND owner);
+	void AddAndKeepArraySorted(MoralesInfluenceSet& mis, MoralesInfluence& mi);
+	void SortMIS(MoralesInfluenceSet& mis);
 
 	MoralesMesh moralesMesh;
 	int numIndices = 0;
+	int numControlPoints = 0;
 
 	int main(int argc, char** argv)
 	{
@@ -143,11 +167,12 @@ namespace MFBXExporter
 		lImporter->Destroy();
 
 		// Process the mesh and the materials
+		ProcessFbxAnimation(lScene);
+
 		ProcessFbxMesh(lScene->GetRootNode());
 
 		ProcessFbxMaterials(lScene);
 
-		ProcessFbxAnimation(lScene);
 
 
 		std::string newFileLocation = ReplaceFBXExtension(SourceFileLocation);
@@ -186,6 +211,7 @@ namespace MFBXExporter
 
 				// Get index count from mesh
 				int numVertices = mesh->GetControlPointsCount();
+				numControlPoints = numVertices;
 				std::cout << "\nVertex Count:" << numVertices;
 
 				// Resize the vertex vector to size of this mesh
@@ -219,7 +245,7 @@ namespace MFBXExporter
 				// Get the Normals array from the mesh
 				FbxArray<FbxVector4> normalsVec;
 				mesh->GetPolygonVertexNormals(normalsVec);
-				std::cout << "\nNormalVec Count:" << normalsVec.Size();
+				std::cout << "\nNormalVec Count:" << normalsVec.Size() << "\n\n";
 
 				// Declare a new array for the second vertex array
 				// Note the size is numIndices not numVertices
@@ -315,13 +341,28 @@ namespace MFBXExporter
 					}
 				}
 
-				// iterate through all color sets
-				// Similar to iterating uv sets, just with FbxGeometryElementVertexColor
+				// set all of the control points
+				for (int i = 0; i < numControlPoints; i++)
+				{
+					moralesMesh.vertexList[i].Joints.x = controlPointInfluences[i].infs[0].joint;
+					moralesMesh.vertexList[i].Joints.y = controlPointInfluences[i].infs[1].joint;
+					moralesMesh.vertexList[i].Joints.z = controlPointInfluences[i].infs[2].joint;
+					moralesMesh.vertexList[i].Joints.w = controlPointInfluences[i].infs[3].joint;
 
-				//for (size_t i = 0; i < length; i++)
-				//{
+					moralesMesh.vertexList[i].Weights.x = controlPointInfluences[i].infs[0].weight;
+					moralesMesh.vertexList[i].Weights.y = controlPointInfluences[i].infs[1].weight;
+					moralesMesh.vertexList[i].Weights.z = controlPointInfluences[i].infs[2].weight;
+					moralesMesh.vertexList[i].Weights.w = controlPointInfluences[i].infs[3].weight;
 
-				//}
+					double sum = moralesMesh.vertexList[i].Weights.x + moralesMesh.vertexList[i].Weights.y +
+						moralesMesh.vertexList[i].Weights.z + moralesMesh.vertexList[i].Weights.w;
+
+					moralesMesh.vertexList[i].Weights.x /= sum;
+					moralesMesh.vertexList[i].Weights.y /= sum;
+					moralesMesh.vertexList[i].Weights.z /= sum;
+					moralesMesh.vertexList[i].Weights.w /= sum;
+				}
+				std::cout << "Mapped control influences to vertices\n";
 				
 				// align (expand) vertex array and set the normals
 				for (int j = 0; j < numIndices; j++)
@@ -331,6 +372,8 @@ namespace MFBXExporter
 					vertexListExpanded[j].Normal.y = normalsVec.GetAt(j)[1];
 					vertexListExpanded[j].Normal.z = normalsVec.GetAt(j)[2];
 					vertexListExpanded[j].Normal.w = normalsVec.GetAt(j)[3];
+					vertexListExpanded[j].Joints = moralesMesh.vertexList[moralesMesh.indicesList[j]].Joints;
+					vertexListExpanded[j].Weights = moralesMesh.vertexList[moralesMesh.indicesList[j]].Weights;
 				}
 
 				// make new indices to match the new vertex(2) array
@@ -364,9 +407,7 @@ namespace MFBXExporter
 								(AreEqual(vertexListExpanded[j].Pos.x, compactedVertexList[k].Pos.x)) &&
 								(AreEqual(vertexListExpanded[j].Pos.y, compactedVertexList[k].Pos.y)) &&
 								(AreEqual(vertexListExpanded[j].Pos.z, compactedVertexList[k].Pos.z)) &&
-								(AreEqual(vertexListExpanded[j].Pos.w, compactedVertexList[k].Pos.w)) &&
-								(AreEqual(vertexListExpanded[j].Tex.x, compactedVertexList[k].Tex.x)) &&
-								(AreEqual(vertexListExpanded[j].Tex.y, compactedVertexList[k].Tex.y)))
+								(AreEqual(vertexListExpanded[j].Pos.w, compactedVertexList[k].Pos.w)))
 							{
 								compactedIndexList[j] = k;
 								thereIsACopy = true;
@@ -552,6 +593,7 @@ namespace MFBXExporter
 	void ProcessFbxAnimation(FbxScene* Scene)
 	{
 		std::vector<MoralesFbxJoint> joints;
+		FbxPose* bindPose = nullptr;
 		// Find the first FbxPose that is a bind pose, assume that the first pose is the only pose of interest.
 		int poseCount = Scene->GetPoseCount();
 		for (int i = 0; i < poseCount; i++)
@@ -560,6 +602,7 @@ namespace MFBXExporter
 
 			if (pose->IsBindPose())
 			{
+				bindPose = pose;
 				// from the bind pose, find the root of the skeleton
 				int nodeCount = pose->GetCount();
 				for (int j = 0; j < nodeCount; j++)
@@ -666,10 +709,140 @@ namespace MFBXExporter
 			moralesMesh.animation.keyframes.push_back(kf);
 		}
 
+		std::cout << "Loading Vertex Skin Data\n";
+
+		
+
+		for (auto& inf : controlPointInfluences)
+		{
+			inf.infs[0].joint = -1;
+			inf.infs[0].weight = -1.0;
+			inf.infs[1].joint = -1;
+			inf.infs[1].weight = -1.0;
+			inf.infs[2].joint = -1;
+			inf.infs[2].weight = -1.0;
+			inf.infs[3].joint = -1;
+			inf.infs[3].weight = -1.0;
+
+		}
+
+		int nodeCount = bindPose->GetCount();
+		for (int i = 0; i < nodeCount; i++)
+		{
+			FbxNode* node = bindPose->GetNode(i);
+			if (node != NULL)
+			{
+				FbxMesh* mesh = node->GetMesh();
+				if (mesh != NULL)
+				{
+					numControlPoints = mesh->GetControlPointsCount();
+					controlPointInfluences.resize(numControlPoints);
+
+					int deformerCount = mesh->GetDeformerCount();
+					for (int j = 0; j < deformerCount; j++)
+					{
+						FbxDeformer* deformer = mesh->GetDeformer(j);
+
+						if (deformer != NULL && deformer->Is<FbxSkin>())
+						{
+							FbxSkin* skin = FbxCast<FbxSkin>(deformer);
+							int clusterCount = skin->GetClusterCount();
+							for (int k = 0; k < clusterCount; k++)
+							{
+								FbxCluster* cluster = skin->GetCluster(k);
+
+								FbxNode* linkedNode = cluster->GetLink();
+								for (int l = 0; l < joints.size(); ++l)
+								{
+									if (joints[l].node == linkedNode)
+									{
+										int joint_index = l;
+										int controlPointsInCluster = cluster->GetControlPointIndicesCount();
+										double* weights = cluster->GetControlPointWeights();
+										int* point_indices = cluster->GetControlPointIndices();
+										for (int I = 0; I < controlPointsInCluster; I++)
+										{
+											MoralesInfluence mi = { joint_index, weights[I] };
+
+											AddAndKeepArraySorted(controlPointInfluences[point_indices[I]], mi);
+
+										}
+										break;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		std::cout << "Loaded control influences\n";
+
 		std::cout << "Loaded Animation\n\n";
+
 
 		// TODO: Get animation (skin?) weights
 
+	}
+
+	void AddAndKeepArraySorted(MoralesInfluenceSet& mis, MoralesInfluence& mi)
+	{
+
+		int size = MAX_INFLUENCES;
+		for (int i = 0; i < MAX_INFLUENCES; i++)
+		{
+			if (mis.infs[i].joint == -1)
+			{
+				size = i;
+				break;
+			}
+		}
+
+		if (size < MAX_INFLUENCES)
+		{
+			mis.infs[size] = mi;
+			return;
+		}
+
+		double lowest_weight = mi.weight;
+		for (int i = 0; i < size; i++)
+		{
+			if (mis.infs[i].weight < lowest_weight)
+			{
+				mis.infs[MAX_INFLUENCES - 1] = mi;
+				SortMIS(mis);
+				return;
+			}
+		}
+	}
+
+	void SortMIS(MoralesInfluenceSet& mis) // slow bubble sort, could optimize later.
+	{
+		int size = MAX_INFLUENCES;
+		for (int i = 0; i < MAX_INFLUENCES; i++)
+		{
+			if (mis.infs[i].joint == -1)
+			{
+				size = i;
+				break;
+			}
+		}
+		int moves;
+		do 
+		{
+			moves = 0;
+			for (int i = 0; i < size - 1; i++)
+			{
+				if (mis.infs[i].weight < mis.infs[i + 1].weight)
+				{
+					MoralesInfluence t = mis.infs[i];
+					mis.infs[i] = mis.infs[i + 1];
+					mis.infs[i + 1] = t;
+					moves++;
+				}
+			}
+		} while (moves != 0);
 	}
 
 	void ConvertFbxAMatrixToFloat16(float* m, const FbxAMatrix& mat)
@@ -754,7 +927,8 @@ namespace MFBXExporter
 	// Pretty basic implmentation of float equality. May be changed later.
 	bool AreEqual(float a, float b)
 	{
-		return fabs(a - b) <= std::numeric_limits<float>::epsilon();
+		//return fabs(a - b) <= std::numeric_limits<float>::epsilon();
+		return a == b;
 	}
 
 	std::string OpenFileName(const wchar_t* filter, HWND owner)

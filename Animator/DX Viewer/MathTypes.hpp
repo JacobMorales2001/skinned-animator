@@ -9,6 +9,8 @@ namespace MRenderer
 		DirectX::XMFLOAT4 normal;
 		DirectX::XMFLOAT4 color;
 		DirectX::XMFLOAT2 tex;
+		DirectX::XMINT4 joints;
+		DirectX::XMFLOAT4 weights;
 	};
 
 	static DirectX::XMFLOAT4 Float4Lerp(const DirectX::XMFLOAT4& a, const DirectX::XMFLOAT4& b, float t)

@@ -54,6 +54,8 @@ namespace MRenderer
 			XMFLOAT4 position;
 			XMFLOAT4 normal;
 			XMFLOAT2 tex;
+			XMINT4 joints;
+			struct Double4 { double x, y, z, w; } weights;
 		};
 
 		struct Material
@@ -146,6 +148,7 @@ namespace MRenderer
 			XMFLOAT4 GlobalAmbient;
 
 			ShaderLight Lights[MAX_LIGHTS];
+			XMMATRIX JointTransforms[64];
 		};
 
 		struct MVP
@@ -222,6 +225,8 @@ namespace MRenderer
 			D3D12_PRIMITIVE_TOPOLOGY		PrimitiveTopology;
 
 			Animation animation;
+
+			XMMATRIX InverseBind[64];
 
 		};
 	public:

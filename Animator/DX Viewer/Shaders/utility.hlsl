@@ -78,6 +78,8 @@ struct AppData
     float4 Normal : NORMAL;
     float4 Color : COLOR;
     float2 TexCoord : TEXCOORD;
+    int4 Joints : JOINTS;
+    float4 Weights : WEIGHTS;
     float4 InstancePos : INSTANCEPOS;
 };
 
@@ -163,6 +165,10 @@ cbuffer PerObject : register(b0)
     float4 GlobalAmbient; // 16 bytes
     //----------------------------------- (16 byte boundary)
     Light Lights[MAX_LIGHTS]; // 80 * 8 = 640 bytes
+    //
+    matrix JointTransforms[64];
+    
+    
 };  // Total:                           // 672 bytes (42 * 16)
 
 struct LightingResult

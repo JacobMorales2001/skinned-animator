@@ -4,11 +4,20 @@ VertexShaderOutput main(AppData IN) //Simple vertex shader
 {
     VertexShaderOutput OUT;
     
-    OUT.Position = IN.Position + IN.InstancePos;
+    float4 skinned_pos = { 0.0f, 0.0f, 0.0f, 0.0f };
+    float4 skinned_norm = { 0.0f, 0.0f, 0.0f, 0.0f };
+    [unroll]
+    for (int j = 0; j < 4; ++j)
+    {
+        skinned_pos += mul(float4(IN.Position.xyz, 1.0f), JointTransforms[IN.Joints[j]]) * IN.Weights[j];
+        skinned_norm += mul(float4(IN.Normal.xyz, 0.0f), JointTransforms[IN.Joints[j]]) * IN.Weights[j];
+    }
+    
+    OUT.Position = skinned_pos + IN.InstancePos;
  
     OUT.Position = mul(OUT.Position, WorldViewProjectionMatrix);
-    OUT.PositionWS = mul(IN.Position, WorldMatrix);
-    OUT.NormalWS = mul(IN.Normal, InverseTransposeWorldMatrix).xyz;
+    OUT.PositionWS = mul(skinned_pos, WorldMatrix);
+    OUT.NormalWS = mul(skinned_norm, InverseTransposeWorldMatrix).xyz;
     OUT.TexCoord = IN.TexCoord;
  
     return OUT;
